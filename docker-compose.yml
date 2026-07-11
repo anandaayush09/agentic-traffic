@@ -1,0 +1,15 @@
+# ATLAS local development / demo stack.
+#
+# Week 1 status: intentionally empty. Per the roadmap (docs/design/13_roadmap.md, Week 1),
+# this file exists now so `docker compose config` validates and the `core`/`full` profile
+# structure described in docs/design/10_deployment.md section 10.1 is documented, but no
+# containers are defined yet -- there is nothing to containerize until the event bus
+# (Redpanda, Week 5) and datastores (Redis/Postgres, Week 5-6) land. Adding empty service
+# stubs ahead of that would be scaffolding nothing depends on; see the repo-wide rule
+# against speculative abstractions.
+#
+# Planned profiles (filled in as each milestone lands):
+#   core  - twin, bus, redis, postgres, one control-plane worker  (Week 5-6)
+#   full  - core + cognitive plane + ML services + frontend + monitoring (Week 9-10)
+
+services: {}

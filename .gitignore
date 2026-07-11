@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Generated / DVC-tracked data (see docs/design/08_data_strategy.md)
+data/networks/*
+!data/networks/.gitkeep
+
+# SUMO outputs
+*.xml.gz
+*-output.xml
+
+# MLflow / experiment artifacts
+mlruns/
+mlartifacts/
+
+# Env files with secrets
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node (frontend, added in later weeks)
+node_modules/
+dist/

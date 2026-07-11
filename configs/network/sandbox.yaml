@@ -1,0 +1,13 @@
+# Week 1 placeholder network: a procedurally generated 3x3 grid with 4 signalized
+# junctions. This exists ONLY to prove the digital-twin wrapper (src/atlas/twin/env.py)
+# against a real SUMO simulation before the real district exists. It is replaced by the
+# audited OpenStreetMap district in Week 2 -- see docs/design/08_data_strategy.md
+# section 8.1. Regenerate with: python scripts/generate_sandbox_network.py
+name: sandbox_grid
+net_file: data/networks/sandbox/net.net.xml
+route_file: data/networks/sandbox/routes.rou.xml
+traffic_light_ids: [A1, B0, B1, B2]
+step_length_s: 1.0
+sumo_seed: 42
+backend: libsumo
+gui: false

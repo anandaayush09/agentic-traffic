@@ -11,6 +11,13 @@ from atlas.twin.demand import (
     turn_direction_counts,
 )
 from atlas.twin.env import JunctionState, LaneState, SumoTwinEnv, TwinEnvConfig, TwinEnvError
+from atlas.twin.fleet import (
+    FleetComponent,
+    FleetConfig,
+    VehicleTypeSpec,
+    merge_route_files,
+    write_vtypes_additional_file,
+)
 from atlas.twin.scenario import ScenarioController, ScenarioSet, ScenarioSpec
 
 __all__ = [
@@ -26,4 +33,9 @@ __all__ = [
     "ScenarioController",
     "ScenarioSet",
     "ScenarioSpec",
+    "FleetConfig",
+    "FleetComponent",
+    "VehicleTypeSpec",
+    "write_vtypes_additional_file",
+    "merge_route_files",
 ]

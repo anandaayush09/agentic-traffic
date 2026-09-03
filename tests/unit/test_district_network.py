@@ -44,7 +44,13 @@ def district_twin_config(district_net_file: Path, tmp_path: Path) -> TwinEnvConf
 
     empty_routes = tmp_path / "empty.rou.xml"
     empty_routes.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<routes/>\n', encoding="utf-8")
-    return config.model_copy(update={"net_file": district_net_file, "route_file": empty_routes})
+    # Cleared explicitly: the YAML's additional_files points at the fleet vType defs
+    # (configs/fleet/...), generated later by scripts/generate_demand.py. This test uses
+    # an empty (no-vehicle) route file and must stay independent of demand/fleet
+    # generation having run yet -- it is purely a network-structure check.
+    return config.model_copy(
+        update={"net_file": district_net_file, "route_file": empty_routes, "additional_files": []}
+    )
 
 
 @pytest.fixture

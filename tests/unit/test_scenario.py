@@ -72,8 +72,15 @@ def scenario_env(night_demand: Path) -> Iterator[SumoTwinEnv]:
     # enable_rerouting: a closure can invalidate a vehicle's pre-computed route; without
     # this, SUMO's --ignore-route-errors baseline just drops every such vehicle instead of
     # routing it around the closure (see the Week 2 module writeup for the full story).
+    # additional_files: the demand is fleet-mixed, so vehicles reference vType ids that
+    # must be resolvable via the generated vtypes file.
+    vtypes_file = NET_FILE.parent / "vtypes.add.xml"
     config = TwinEnvConfig(
-        name="scenario_test", net_file=NET_FILE, route_file=night_demand, enable_rerouting=True
+        name="scenario_test",
+        net_file=NET_FILE,
+        route_file=night_demand,
+        enable_rerouting=True,
+        additional_files=[vtypes_file],
     )
     env = SumoTwinEnv(config)
     env.reset()

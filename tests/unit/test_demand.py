@@ -34,7 +34,7 @@ def generated_demand(demand_config: DemandConfig) -> dict[str, Path]:
     import generate_demand
 
     build_district_network.build_network()
-    return generate_demand.generate_all(config_path=DEMAND_CONFIG_PATH)
+    return generate_demand.generate_all(demand_config_path=DEMAND_CONFIG_PATH)
 
 
 def _mean_speed_ratio(
@@ -42,25 +42,33 @@ def _mean_speed_ratio(
 ) -> float:
     """Runs the given demand through a fresh SumoTwinEnv-managed simulation and returns
     the mean (observed speed / allowed speed) across all present vehicles, sampled every
-    `sample_interval` steps. 1.0 = free flow; lower = more congested. Reaches into the raw
-    libsumo connection (rather than extending SumoTwinEnv's public API) because network-
-    wide vehicle speed sampling is a one-off validation concern, not a twin-wrapper
+    `sample_interval` steps. 1.0 = free flow; lower = more congested. Reaches into
+    `env.connection` (rather than extending SumoTwinEnv's public API) because network-wide
+    vehicle speed sampling is a one-off validation concern, not a twin-wrapper
     responsibility -- see the Week 2 module writeup for the rationale.
     """
-    config = TwinEnvConfig(name="congestion_probe", net_file=NET_FILE, route_file=route_file)
+    # additional_files: the demand is fleet-mixed (configs/fleet/manhattan_midtown.yaml),
+    # so vehicles reference vType ids that must be resolvable via the generated vtypes file.
+    vtypes_file = NET_FILE.parent / "vtypes.add.xml"
+    config = TwinEnvConfig(
+        name="congestion_probe",
+        net_file=NET_FILE,
+        route_file=route_file,
+        additional_files=[vtypes_file],
+    )
     env = SumoTwinEnv(config)
     ratios: list[float] = []
     try:
         env.reset()
-        import libsumo
+        conn = env.connection
 
         duration_steps = int(duration_s / env.config.step_length_s)
         for step in range(duration_steps):
             env.step()
             if step % sample_interval == 0:
-                for vehicle_id in libsumo.vehicle.getIDList():
-                    speed = libsumo.vehicle.getSpeed(vehicle_id)
-                    allowed = libsumo.vehicle.getAllowedSpeed(vehicle_id)
+                for vehicle_id in conn.vehicle.getIDList():
+                    speed = conn.vehicle.getSpeed(vehicle_id)
+                    allowed = conn.vehicle.getAllowedSpeed(vehicle_id)
                     if allowed > 0:
                         ratios.append(speed / allowed)
     finally:

@@ -118,9 +118,28 @@ specific), in two parts:
 | `midblock_accident` (5-lane edge, speed_factor=0.25) | Speed reduced to exactly 25% on all 5 lanes during [600s, 900s), restored exactly after |
 | `avenue_closure` (3-lane edge) | All 3 lanes fully blocked (`getAllowed() == ()`) during [900s, 1200s), restored exactly after |
 
-## Not yet done (next Week 2 sub-steps)
+## Fleet mix (part 4)
 
-- Fleet mix (buses on real GTFS routes, trucks, emergency vehicles) -- currently
-  passenger cars only.
+Vehicle-type diversity (`configs/fleet/manhattan_midtown.yaml`, `src/atlas/twin/fleet.py`)
+layered onto every demand period: passenger (85%), truck (8%), bus (5%), emergency (2%) --
+a documented assumption, not a real fleet-composition count (none exists for a synthetic
+district). Mechanism verified against `randomTrips.py` directly before implementing:
+`--vehicle-class` and a `type="..."` trip-attribute cannot be combined, so each type is a
+SUMO `<vType>` (own `vClass`) referenced via `--trip-attributes`, generated once per
+component per period (`period_s` scaled by `1/fraction`) and merged into one depart-time-
+sorted route file.
 
-See [docs/design/13_roadmap.md](../../../docs/design/13_roadmap.md), Week 2.
+| Check (pm_peak) | Result |
+|---|---|
+| Configured fractions | passenger 85% / truck 8% / bus 5% / emergency 2% |
+| Actual generated mix | passenger 85.0% (1391) / truck 8.0% (131) / bus 5.0% (82) / emergency 2.0% (33) |
+
+**Note:** "bus" here is a vehicle *type* mixed into random demand, not scheduled service
+on real GTFS routes/stops -- that upgrade (real transit-agency schedule data) is
+explicitly deferred, not silently pretended to be done. Real GTFS integration would be
+required before the PT-efficiency evaluation metric (docs/design/11_evaluation.md) could
+be taken seriously; it is not needed for the digital twin or control-plane work ahead.
+
+**This completes Week 2.** All four sub-steps done: network acquisition/audit, time-of-
+day demand, scenario engine v1, fleet mix. See
+[docs/design/13_roadmap.md](../../../docs/design/13_roadmap.md), Week 3 (RL ramp-up) next.

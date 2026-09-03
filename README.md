@@ -1,6 +1,6 @@
 # ATLAS — Agentic Traffic Learning & Adaptive Signaling
 
-> **Status: Week 2 of 12 (in progress) — Network Audit & Real District Acquisition.**
+> **Status: Week 2 of 12 complete — Network Audit & Real District Acquisition.**
 > This README will grow a demo GIF, architecture diagram, and headline evaluation
 > results as later milestones land. Right now it documents what actually exists.
 
@@ -31,7 +31,7 @@ tracks implementation status against that plan; it does not re-derive the archit
   zero-install SUMO binary discovery
   ([`src/atlas/common/sumo_locate.py`](src/atlas/common/sumo_locate.py)).
 
-**Week 2 (in progress) — real district network + demand:**
+**Week 2 (complete) — real district network + demand:**
 - A real 22-signalized-junction SUMO network built from OpenStreetMap (Midtown
   Manhattan, W 42nd–48th St / 6th–9th Ave), acquired and audited per
   [`data/networks/manhattan_midtown/AUDIT.md`](data/networks/manhattan_midtown/AUDIT.md)
@@ -50,12 +50,15 @@ tracks implementation status against that plan; it does not re-derive the archit
   simulation ([`src/atlas/twin/scenario.py`](src/atlas/twin/scenario.py)) — building it
   surfaced and fixed a real robustness gap in `SumoTwinEnv` itself (a closure with no
   alternate route could crash the whole simulation; see AUDIT.md for the fix).
-- Not yet done: fleet mix (buses/trucks/emergency vehicles) — see
-  [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md), Week 2.
+- A fleet mix (passenger/truck/bus/emergency vehicle types, realistic proportions) layered
+  onto every demand period ([`src/atlas/twin/fleet.py`](src/atlas/twin/fleet.py)) —
+  "bus" here is a vehicle type mixed into random demand, not scheduled service on real
+  GTFS routes, which is explicitly deferred (see AUDIT.md).
 
-Everything else described in `docs/design/` (the control plane, event bus, cognitive
-plane, perception, forecasting, dashboard, deployment) is designed but **not yet built**
-— see [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md) for the week-by-week plan.
+Everything else described in `docs/design/` (MARL control, event bus, cognitive plane,
+perception, forecasting, dashboard, deployment) is designed but **not yet built** — Week 3
+(RL ramp-up) is next; see [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md) for the
+week-by-week plan.
 
 ## Quickstart
 
@@ -76,6 +79,9 @@ python scripts/run_twin_smoke_test.py
 # Build the real Week 2 district network from the committed OSM extract
 python scripts/build_district_network.py
 
+# Generate fleet-mixed, time-of-day demand for it (4 periods x 4 vehicle types)
+python scripts/generate_demand.py
+
 # Run the test suite
 pytest
 ```
@@ -88,16 +94,20 @@ full target layout and the rationale behind it. Current state:
 ```
 agentic-traffic/
 ├── docs/design/          # frozen architecture (15 files, Parts 1-14 + exec summary)
-├── configs/network/       # declarative YAML network/twin configs
+├── configs/
+│   ├── network/            # declarative YAML network/twin configs
+│   ├── demand/              # time-of-day demand period recipes
+│   ├── fleet/                # vehicle-type mix recipes
+│   └── scenarios/           # accident/closure scenario definitions
 ├── scripts/                # generate_sandbox_network.py, build_district_network.py,
-│                            # run_twin_smoke_test.py
+│                            # generate_demand.py, run_twin_smoke_test.py
 ├── src/atlas/
 │   ├── common/             # config loading, logging, SUMO discovery
-│   └── twin/                # SumoTwinEnv: the digital-twin wrapper
+│   └── twin/                # SumoTwinEnv, demand/fleet/scenario modules
 ├── tests/unit/
 ├── data/networks/
 │   ├── sandbox/             # generated (gitignored), regenerable from scripts/
-│   └── manhattan_midtown/   # raw.osm.xml + AUDIT.md committed; net.net.xml regenerated
+│   └── manhattan_midtown/   # raw.osm.xml + AUDIT.md committed; everything else regenerated
 └── pyproject.toml
 ```
 

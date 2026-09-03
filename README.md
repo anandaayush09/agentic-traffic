@@ -1,6 +1,6 @@
 # ATLAS — Agentic Traffic Learning & Adaptive Signaling
 
-> **Status: Week 2 of 12 complete — Network Audit & Real District Acquisition.**
+> **Status: Week 3 of 12 (in progress) — RL Ramp-Up.**
 > This README will grow a demo GIF, architecture diagram, and headline evaluation
 > results as later milestones land. Right now it documents what actually exists.
 
@@ -55,10 +55,20 @@ tracks implementation status against that plan; it does not re-derive the archit
   "bus" here is a vehicle type mixed into random demand, not scheduled service on real
   GTFS routes, which is explicitly deferred (see AUDIT.md).
 
+**Week 3 (in progress) — RL ramp-up:**
+- The signal safety shield ([`src/atlas/control/shield.py`](src/atlas/control/shield.py))
+  — enforces minimum/maximum green time on every signal decision, independent of whatever
+  produces the requested action (RL policy, classical controller, human operator). SUMO-
+  agnostic and unit-tested exhaustively with property-based tests (Hypothesis), which
+  caught a real boundary-condition bug during development: an invalid phase request
+  arriving exactly at `max_green_s` could silently bypass the max-green override.
+- Not yet done: classical controllers (max-pressure, fixed-time) and the single-junction
+  Stable-Baselines3 PPO baseline — see
+  [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md), Week 3.
+
 Everything else described in `docs/design/` (MARL control, event bus, cognitive plane,
-perception, forecasting, dashboard, deployment) is designed but **not yet built** — Week 3
-(RL ramp-up) is next; see [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md) for the
-week-by-week plan.
+perception, forecasting, dashboard, deployment) is designed but **not yet built** — see
+[`docs/design/13_roadmap.md`](docs/design/13_roadmap.md) for the week-by-week plan.
 
 ## Quickstart
 
@@ -103,7 +113,8 @@ agentic-traffic/
 │                            # generate_demand.py, run_twin_smoke_test.py
 ├── src/atlas/
 │   ├── common/             # config loading, logging, SUMO discovery
-│   └── twin/                # SumoTwinEnv, demand/fleet/scenario modules
+│   ├── twin/                # SumoTwinEnv, demand/fleet/scenario modules
+│   └── control/             # signal safety shield; classical controllers (Week 3)
 ├── tests/unit/
 ├── data/networks/
 │   ├── sandbox/             # generated (gitignored), regenerable from scripts/

@@ -30,11 +30,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from atlas.control.phases import green_phase_indices as _green_phase_indices
+
 ShieldReason = Literal["min_green", "max_green", "invalid_phase"]
-
-
-def _is_yellow(phase_state: str) -> bool:
-    return any(c in "yY" for c in phase_state)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +46,7 @@ class SignalProgram:
 
     @classmethod
     def from_phase_states(cls, tls_id: str, phase_states: list[str]) -> SignalProgram:
-        green = tuple(i for i, state in enumerate(phase_states) if not _is_yellow(state))
+        green = _green_phase_indices(phase_states)
         if not green:
             raise ValueError(f"No green (non-yellow) phases found for traffic light '{tls_id}'")
         return cls(tls_id=tls_id, green_phase_indices=green)

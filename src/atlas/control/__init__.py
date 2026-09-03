@@ -5,6 +5,17 @@ Public API re-exported here so callers write `from atlas.control import SignalSh
 instead of reaching into submodules directly.
 """
 
+from atlas.control.fixed_time import (
+    WebsterResult,
+    compute_webster_green_splits,
+    select_fixed_time_phase,
+)
+from atlas.control.max_pressure import (
+    MaxPressureProgram,
+    Movement,
+    phase_pressure,
+    select_max_pressure_phase,
+)
 from atlas.control.shield import ShieldConfig, ShieldDecision, SignalProgram, SignalShield
 
 __all__ = [
@@ -12,4 +23,11 @@ __all__ = [
     "ShieldConfig",
     "ShieldDecision",
     "SignalProgram",
+    "MaxPressureProgram",
+    "Movement",
+    "phase_pressure",
+    "select_max_pressure_phase",
+    "WebsterResult",
+    "compute_webster_green_splits",
+    "select_fixed_time_phase",
 ]

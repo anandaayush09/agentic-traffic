@@ -62,8 +62,18 @@ tracks implementation status against that plan; it does not re-derive the archit
   agnostic and unit-tested exhaustively with property-based tests (Hypothesis), which
   caught a real boundary-condition bug during development: an invalid phase request
   arriving exactly at `max_green_s` could silently bypass the max-green override.
-- Not yet done: classical controllers (max-pressure, fixed-time) and the single-junction
-  Stable-Baselines3 PPO baseline — see
+- Max-pressure ([`src/atlas/control/max_pressure.py`](src/atlas/control/max_pressure.py))
+  — the strong decentralized classical baseline: picks the green phase maximizing total
+  pressure (upstream queue minus downstream queue, summed over every movement it
+  enables), using the real network's own `<connection linkIndex=...>` data to map phase
+  positions to specific lane-to-lane movements. Tested against hand-computed pressure
+  values on a real junction, not just "which phase wins."
+- Webster fixed-time
+  ([`src/atlas/control/fixed_time.py`](src/atlas/control/fixed_time.py)) — the classic
+  1958 optimal-cycle formula as a pure, hand-verified function, plus a deterministic
+  phase-cycling mechanism. The weakest classical baseline and the shield's last-resort
+  fallback (it needs no real-time data at all).
+- Not yet done: the single-junction Stable-Baselines3 PPO baseline — see
   [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md), Week 3.
 
 Everything else described in `docs/design/` (MARL control, event bus, cognitive plane,
@@ -114,7 +124,7 @@ agentic-traffic/
 ├── src/atlas/
 │   ├── common/             # config loading, logging, SUMO discovery
 │   ├── twin/                # SumoTwinEnv, demand/fleet/scenario modules
-│   └── control/             # signal safety shield; classical controllers (Week 3)
+│   └── control/             # safety shield, max-pressure, fixed-time (Week 3)
 ├── tests/unit/
 ├── data/networks/
 │   ├── sandbox/             # generated (gitignored), regenerable from scripts/

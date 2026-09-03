@@ -90,10 +90,37 @@ absolute "close to free-flow" target -- see `tests/unit/test_demand.py`'s
 initial assumption the plausibility-invariant approach is meant to catch before it
 becomes a silently-miscalibrated training signal three weeks from now.
 
+## Scenario engine v1 (part 3)
+
+Declarative accident/closure scenarios (`configs/scenarios/manhattan_midtown.yaml`,
+`src/atlas/twin/scenario.py`'s `ScenarioController`), applied/reverted at runtime via
+`libsumo.lane.setMaxSpeed`/`setAllowed` (verified directly against the API before
+implementing -- see the module docstring). Rush-hour is already the am_peak/pm_peak
+demand periods, so it is not a separate scenario type.
+
+**Real robustness issue found and fixed, not a test bug:** applying the `avenue_closure`
+scenario crashed the simulation with `FatalTraCIError: Vehicle '113' has no valid route`.
+Root cause: vehicle routes are pre-computed by `duarouter` at demand-generation time,
+before any scenario exists; when a closure blocks an edge a vehicle's fixed route already
+depends on, and in this small bbox-clipped network (17 dead-end edges from the clip) no
+alternate path exists for that specific origin-destination pair, SUMO has no way to
+continue that vehicle's trip. Fix, added to `SumoTwinEnv` generally (not scenario-
+specific), in two parts:
+1. `TwinEnvConfig.enable_rerouting` (default `False`, opt-in) assigns SUMO's rerouting
+   device to every vehicle, so most vehicles replan around a closure automatically.
+2. `--ignore-route-errors true` added unconditionally to every `SumoTwinEnv` run: the
+   remaining, genuinely un-routable vehicles (true dead ends, no rerouting can fix them)
+   are dropped instead of crashing the entire simulation. This is a Week 1 robustness gap
+   that Week 2's scenario engine happened to be the first thing to stress-test.
+
+| Check | Result |
+|---|---|
+| `midblock_accident` (5-lane edge, speed_factor=0.25) | Speed reduced to exactly 25% on all 5 lanes during [600s, 900s), restored exactly after |
+| `avenue_closure` (3-lane edge) | All 3 lanes fully blocked (`getAllowed() == ()`) during [900s, 1200s), restored exactly after |
+
 ## Not yet done (next Week 2 sub-steps)
 
 - Fleet mix (buses on real GTFS routes, trucks, emergency vehicles) -- currently
   passenger cars only.
-- Scenario engine v1 (closure, accident, rush-hour disruption classes).
 
 See [docs/design/13_roadmap.md](../../../docs/design/13_roadmap.md), Week 2.

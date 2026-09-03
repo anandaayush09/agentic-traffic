@@ -43,6 +43,12 @@ class TwinEnvConfig(BaseModel):
     sumo_seed: int = 42
     backend: TwinBackend = "libsumo"
     gui: bool = False
+    enable_rerouting: bool = False
+    """Assigns SUMO's rerouting device to every vehicle, so a vehicle whose pre-computed
+    route is invalidated mid-simulation (e.g. by a scenario-engine lane closure) replans
+    around the blockage instead of raising a fatal error. Off by default: it changes
+    vehicle behavior (and therefore any measured traffic statistics), so it should only be
+    on when a run actually needs dynamic rerouting -- e.g. scenario-engine closures."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +98,17 @@ class SumoTwinEnv:
         return self._config
 
     @property
+    def connection(self) -> Any:
+        """The raw libsumo/traci module backing this simulation, for callers that need
+        network-wide or lane/edge-level control this wrapper doesn't expose directly
+        (e.g. the scenario engine blocking/degrading a specific lane). Deliberately an
+        escape hatch, not part of the wrapper's core contract -- prefer the typed methods
+        below when they cover what you need.
+        """
+        self._require_running()
+        return self._conn
+
+    @property
     def sim_time(self) -> float:
         self._require_running()
         return cast(float, self._conn.simulation.getTime())
@@ -121,9 +138,16 @@ class SumoTwinEnv:
             "true",
             "--time-to-teleport",
             "-1",
+            # A vehicle whose pre-computed route is invalidated mid-run (e.g. a scenario-
+            # engine closure with no alternate path in a small/sparse network) must not be
+            # able to crash the entire simulation -- SUMO drops that one vehicle instead.
+            "--ignore-route-errors",
+            "true",
         ]
         for extra in self._config.additional_files:
             cmd += ["--additional-files", str(extra)]
+        if self._config.enable_rerouting:
+            cmd += ["--device.rerouting.probability", "1.0", "--device.rerouting.period", "30"]
 
         logger.info(
             "twin.starting",

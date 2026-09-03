@@ -45,8 +45,12 @@ tracks implementation status against that plan; it does not re-derive the archit
   ([`src/atlas/twin/demand.py`](src/atlas/twin/demand.py)), and a congestion proxy that
   falls monotonically with demand — full results and an important calibration caveat in
   AUDIT.md.
-- Not yet done: fleet mix (buses/trucks/emergency vehicles) and the scenario engine
-  (accident/closure/rush-hour disruption classes) — see
+- A scenario engine (accident/closure disruptions; rush-hour is the am_peak/pm_peak
+  demand periods above) that dynamically applies/reverts lane-level effects on a running
+  simulation ([`src/atlas/twin/scenario.py`](src/atlas/twin/scenario.py)) — building it
+  surfaced and fixed a real robustness gap in `SumoTwinEnv` itself (a closure with no
+  alternate route could crash the whole simulation; see AUDIT.md for the fix).
+- Not yet done: fleet mix (buses/trucks/emergency vehicles) — see
   [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md), Week 2.
 
 Everything else described in `docs/design/` (the control plane, event bus, cognitive

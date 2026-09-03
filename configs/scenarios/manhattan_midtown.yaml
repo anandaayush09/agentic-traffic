@@ -1,0 +1,20 @@
+# Week 2 scenario engine v1: accident + closure disruptions layered on top of a demand
+# period (rush-hour is already the am_peak/pm_peak demand periods, not a separate
+# mechanism here). See docs/design/08_data_strategy.md section 8.3.
+#
+# Both edges are multi-lane (verified against the built network): 448686048#0 has 5
+# lanes, 1320232776#0 has 3 -- chosen so each scenario exercises blocking/degrading every
+# lane of an edge, not just a trivial single-lane case.
+network: manhattan_midtown
+scenarios:
+  - name: midblock_accident
+    type: accident
+    edge_id: "448686048#0"
+    start_s: 600
+    duration_s: 300
+    speed_factor: 0.25
+  - name: avenue_closure
+    type: closure
+    edge_id: "1320232776#0"
+    start_s: 900
+    duration_s: 300

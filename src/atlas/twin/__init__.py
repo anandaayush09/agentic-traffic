@@ -11,6 +11,7 @@ from atlas.twin.demand import (
     turn_direction_counts,
 )
 from atlas.twin.env import JunctionState, LaneState, SumoTwinEnv, TwinEnvConfig, TwinEnvError
+from atlas.twin.scenario import ScenarioController, ScenarioSet, ScenarioSpec
 
 __all__ = [
     "SumoTwinEnv",
@@ -22,4 +23,7 @@ __all__ = [
     "DemandPeriod",
     "parse_connection_directions",
     "turn_direction_counts",
+    "ScenarioController",
+    "ScenarioSet",
+    "ScenarioSpec",
 ]

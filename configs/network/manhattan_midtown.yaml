@@ -1,0 +1,36 @@
+# Week 2 real district: Midtown Manhattan grid, W 42nd-48th St between 6th and 9th Ave.
+# See data/networks/manhattan_midtown/AUDIT.md for the full acquisition and audit record.
+# Build with: python scripts/build_district_network.py
+name: manhattan_midtown
+net_file: data/networks/manhattan_midtown/net.net.xml
+route_file: data/networks/manhattan_midtown/routes.rou.xml
+# Authoritative traffic-light ids as returned by trafficlight.getIDList() at runtime --
+# note 'GS_42439981' (a SUMO-assigned grouped-signal id for jointly-controlled junctions),
+# NOT the raw OSM/junction id '42439981' that appears in the static net.net.xml.
+traffic_light_ids:
+  - "42428283"
+  - "42428287"
+  - "42428297"
+  - "42430333"
+  - "42430338"
+  - "42430342"
+  - "42430344"
+  - "42430347"
+  - "42430350"
+  - "42430352"
+  - "42430356"
+  - "42432700"
+  - "42435663"
+  - "42435671"
+  - "42437363"
+  - "42439968"
+  - "42439972"
+  - "42439984"
+  - "42439990"
+  - "42439994"
+  - "5849918504"
+  - "GS_42439981"
+step_length_s: 1.0
+sumo_seed: 42
+backend: libsumo
+gui: false

@@ -1,6 +1,6 @@
 # ATLAS — Agentic Traffic Learning & Adaptive Signaling
 
-> **Status: Week 1 of 12 — Foundations & Digital Twin Skeleton.**
+> **Status: Week 2 of 12 (in progress) — Network Audit & Real District Acquisition.**
 > This README will grow a demo GIF, architecture diagram, and headline evaluation
 > results as later milestones land. Right now it documents what actually exists.
 
@@ -16,21 +16,31 @@ protocol, 12-week roadmap, and the multi-persona senior-engineer design review �
 [`docs/design/`](docs/design/00_executive_summary.md). **Read that first.** This README
 tracks implementation status against that plan; it does not re-derive the architecture.
 
-## What exists right now (Week 1)
+## What exists right now
 
+**Week 1 — digital twin wrapper:**
 - A `SumoTwinEnv` wrapper ([`src/atlas/twin/env.py`](src/atlas/twin/env.py)) around a real
   SUMO simulation (via `libsumo`) that can reset, step, and read back per-junction signal
   state and per-lane traffic state (queue length, occupancy, speed, vehicle count).
-- A procedurally generated placeholder network (3×3 grid, 4 signalized junctions) used to
-  prove the twin end-to-end before the real, audited OpenStreetMap district lands in Week
-  2 ([`scripts/generate_sandbox_network.py`](scripts/generate_sandbox_network.py)).
+- A procedurally generated placeholder network (3×3 grid, 4 signalized junctions,
+  [`scripts/generate_sandbox_network.py`](scripts/generate_sandbox_network.py)) used to
+  prove the twin end-to-end.
 - Shared infrastructure: YAML-driven config loading validated by Pydantic models
   ([`src/atlas/common/config.py`](src/atlas/common/config.py)), structured logging via
   `structlog` ([`src/atlas/common/logging.py`](src/atlas/common/logging.py)), and
   zero-install SUMO binary discovery
   ([`src/atlas/common/sumo_locate.py`](src/atlas/common/sumo_locate.py)).
-- A test suite covering config loading, SUMO discovery, and the twin's full lifecycle,
-  including a 1000-step stability run.
+
+**Week 2 (in progress) — real district network:**
+- A real 22-signalized-junction SUMO network built from OpenStreetMap (Midtown
+  Manhattan, W 42nd–48th St / 6th–9th Ave), acquired and audited per
+  [`data/networks/manhattan_midtown/AUDIT.md`](data/networks/manhattan_midtown/AUDIT.md)
+  — connectivity-checked (single component, 100% coverage), loads and steps cleanly
+  through the same `SumoTwinEnv` from Week 1.
+  ([`scripts/build_district_network.py`](scripts/build_district_network.py))
+- Not yet done: demand generation (OD matrices, time-of-day profiles) and the scenario
+  engine (accident/closure/rush-hour disruption classes) — see
+  [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md), Week 2.
 
 Everything else described in `docs/design/` (the control plane, event bus, cognitive
 plane, perception, forecasting, dashboard, deployment) is designed but **not yet built**
@@ -52,6 +62,9 @@ python scripts/generate_sandbox_network.py
 # Run 1000 simulation steps and log junction state along the way
 python scripts/run_twin_smoke_test.py
 
+# Build the real Week 2 district network from the committed OSM extract
+python scripts/build_district_network.py
+
 # Run the test suite
 pytest
 ```
@@ -65,12 +78,15 @@ full target layout and the rationale behind it. Current state:
 agentic-traffic/
 ├── docs/design/          # frozen architecture (15 files, Parts 1-14 + exec summary)
 ├── configs/network/       # declarative YAML network/twin configs
-├── scripts/                # generate_sandbox_network.py, run_twin_smoke_test.py
+├── scripts/                # generate_sandbox_network.py, build_district_network.py,
+│                            # run_twin_smoke_test.py
 ├── src/atlas/
 │   ├── common/             # config loading, logging, SUMO discovery
 │   └── twin/                # SumoTwinEnv: the digital-twin wrapper
 ├── tests/unit/
-├── data/networks/          # generated (gitignored), regenerable from scripts/
+├── data/networks/
+│   ├── sandbox/             # generated (gitignored), regenerable from scripts/
+│   └── manhattan_midtown/   # raw.osm.xml + AUDIT.md committed; net.net.xml regenerated
 └── pyproject.toml
 ```
 

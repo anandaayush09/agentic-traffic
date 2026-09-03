@@ -15,6 +15,9 @@ dependencies = [
     "pydantic-settings>=2.14,<3",
     "pyyaml>=6.0,<7",
     "structlog>=26.0,<27",
+    "gymnasium>=0.29,<1.1",
+    "stable-baselines3>=2.3,<3",
+    "torch>=2.4,<3",
 ]
 
 [project.optional-dependencies]

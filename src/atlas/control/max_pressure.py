@@ -99,6 +99,20 @@ def phase_pressure(
     )
 
 
+def total_pressure(program: MaxPressureProgram, queue_lengths: Mapping[str, int]) -> int:
+    """Total pressure summed over EVERY movement the junction controls, regardless of
+    which phase is currently active -- a whole-junction congestion measure, distinct from
+    `phase_pressure`'s per-phase score used by the control law. This is the PressLight-
+    style reward signal (docs/design/06_ai_pipeline.md section 6.1: "reward: negative
+    junction pressure"): minimizing it (maximizing its negation) encourages keeping every
+    approach's queues low, not just the ones currently being served.
+    """
+    return sum(
+        queue_lengths.get(m.from_lane, 0) - queue_lengths.get(m.to_lane, 0)
+        for m in program.movements
+    )
+
+
 def select_max_pressure_phase(program: MaxPressureProgram, queue_lengths: Mapping[str, int]) -> int:
     """The max-pressure control law: the green phase with the highest total pressure.
     Ties broken by lowest phase index, for determinism.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from atlas.control.phases import green_phase_indices, is_yellow_phase
+import pytest
+
+from atlas.control.phases import green_phase_indices, is_yellow_phase, yellow_phase_after
 
 
 class TestIsYellowPhase:
@@ -27,3 +29,24 @@ class TestGreenPhaseIndices:
 
     def test_empty_input(self) -> None:
         assert green_phase_indices([]) == ()
+
+
+class TestYellowPhaseAfter:
+    # Copied verbatim from junction B1 in the sandbox network.
+    STATES = ["GGggrrrrGGggrrrr", "yyyyrrrryyyyrrrr", "rrrrGGggrrrrGGgg", "rrrryyyyrrrryyyy"]
+
+    def test_finds_yellow_after_first_green(self) -> None:
+        assert yellow_phase_after(self.STATES, 0) == 1
+
+    def test_finds_yellow_after_second_green(self) -> None:
+        assert yellow_phase_after(self.STATES, 2) == 3
+
+    def test_wraps_around_cyclically(self) -> None:
+        states = ["yyyy", "GGrr"]  # green is the LAST phase; its yellow wraps to index 0
+        assert yellow_phase_after(states, 1) == 0
+
+    def test_raises_if_next_phase_is_not_yellow(self) -> None:
+        states = ["GGrr", "rrGG"]  # no yellow phases at all
+
+        with pytest.raises(ValueError, match="is not"):
+            yellow_phase_after(states, 0)

@@ -24,6 +24,7 @@ from atlas.control.max_pressure import (
     MaxPressureProgram,
     phase_pressure,
     select_max_pressure_phase,
+    total_pressure,
 )
 
 TLS_ID = "42430333"
@@ -112,6 +113,29 @@ class TestPhasePressureHandComputed:
         pressure = phase_pressure(program, 0, queue_lengths)
 
         assert pressure == 6  # only this one movement is non-zero
+
+
+class TestTotalPressure:
+    def test_sums_across_both_phases_regardless_of_which_is_active(
+        self, program: MaxPressureProgram
+    ) -> None:
+        # Combines the two per-phase hand-computed cases above (80 for phase 0's
+        # movements, 60 for phase 2's) -- total_pressure must count both, unlike
+        # phase_pressure which only ever looks at one phase at a time.
+        queue_lengths = {
+            "1320232776#0_0": 10,
+            "1320232776#0_1": 10,
+            "1320232776#0_2": 10,
+            "-167922072#1_0": 10,
+            "-167922072#1_1": 10,
+            "448686048#0_0": 10,
+            "448686048#0_1": 10,
+            "448686048#0_2": 10,
+            "448686048#0_3": 10,
+            "448686048#0_4": 10,
+        }
+
+        assert total_pressure(program, queue_lengths) == 140  # 80 + 60
 
 
 class TestSelectMaxPressurePhase:

@@ -15,7 +15,9 @@ from atlas.control.max_pressure import (
     Movement,
     phase_pressure,
     select_max_pressure_phase,
+    total_pressure,
 )
+from atlas.control.phases import green_phase_indices, is_yellow_phase, yellow_phase_after
 from atlas.control.shield import ShieldConfig, ShieldDecision, SignalProgram, SignalShield
 
 __all__ = [
@@ -27,7 +29,11 @@ __all__ = [
     "Movement",
     "phase_pressure",
     "select_max_pressure_phase",
+    "total_pressure",
     "WebsterResult",
     "compute_webster_green_splits",
     "select_fixed_time_phase",
+    "is_yellow_phase",
+    "green_phase_indices",
+    "yellow_phase_after",
 ]

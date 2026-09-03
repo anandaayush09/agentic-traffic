@@ -1,0 +1,32 @@
+# Time-of-day demand periods for the manhattan_midtown district (Week 2 part 2).
+# Each period is generated independently (own randomTrips.py run, own seed) rather than
+# concatenated into one 24h file -- simpler to reason about and to validate individually,
+# and it's what the scenario engine (next Week 2 step) will select between per scenario.
+#
+# fringe_factor biases randomTrips.py toward longer, edge-to-edge "through" trips over
+# short internal hops -- the input-shaping half of "turn-ratio calibration" (see
+# docs/design/08_data_strategy.md section 8.2 and AUDIT.md for the full rationale).
+# period_s is the mean seconds between successive vehicle insertions (smaller = denser
+# traffic); duration_s is how many seconds of demand to generate, starting at t=0.
+network: manhattan_midtown
+periods:
+  - name: night
+    duration_s: 1800
+    period_s: 9.0
+    fringe_factor: 5.0
+    seed: 101
+  - name: midday
+    duration_s: 1800
+    period_s: 3.0
+    fringe_factor: 5.0
+    seed: 102
+  - name: am_peak
+    duration_s: 1800
+    period_s: 1.3
+    fringe_factor: 5.0
+    seed: 103
+  - name: pm_peak
+    duration_s: 1800
+    period_s: 1.1
+    fringe_factor: 5.0
+    seed: 104

@@ -61,10 +61,39 @@ grouped-signal id) rather than the raw OSM junction id `42439981` for one jointl
 controlled cluster -- `configs/network/manhattan_midtown.yaml`'s `traffic_light_ids` uses
 the runtime ids, not the static XML ids; the two differ for exactly this one entry.
 
+## Demand generation & plausibility invariants (part 2)
+
+Four time-of-day periods generated via `scripts/generate_demand.py` from
+`configs/demand/manhattan_midtown.yaml` (night/midday/am_peak/pm_peak, each 1800s,
+`randomTrips.py --fringe-factor 5 --validate`, per-period seed). Turn-ratio "calibration"
+is two mechanisms, not one: `--fringe-factor` biases generation toward through-traffic
+(the shaping half); `atlas.twin.demand.turn_direction_counts` audits the result against
+SUMO's own computed connection directions (the checking half) -- there is no real turn-
+count ground truth to calibrate against, so this is a sanity check, not a fit-to-data
+claim (see docs/design/08_data_strategy.md section 8.2's own "plausibility invariants,
+not ground truth" framing).
+
+| Check | Result |
+|---|---|
+| Vehicle count ordering | night (200) < midday (600) < am_peak (1385) < pm_peak (1637) |
+| Turn direction mix (pm_peak) | straight 66%, left 20%, right 13%, U-turn 1.4% -- plausible, not degenerate |
+| Congestion proxy (mean speed / allowed speed, sampled every 60 steps) | night 0.381 > midday 0.332 > am_peak 0.277 > pm_peak 0.190 -- monotonic with demand |
+
+**Important calibration note:** the congestion proxy does **not** approach 1.0 (free
+flow) even at night. This is a real property of a dense signalized grid (a traffic light
+roughly every block), not a demand-generation defect -- most of a vehicle's average delay
+here is waiting at red lights, not queueing behind other traffic, so the absolute scale
+stays well below 1.0 regardless of volume. The invariant actually validated in tests is
+therefore *relative* (monotonic ordering with demand, never near-total gridlock), not an
+absolute "close to free-flow" target -- see `tests/unit/test_demand.py`'s
+`TestCongestionProxy` docstring for the full reasoning. This is exactly the kind of wrong
+initial assumption the plausibility-invariant approach is meant to catch before it
+becomes a silently-miscalibrated training signal three weeks from now.
+
 ## Not yet done (next Week 2 sub-steps)
 
-- Demand generation (OD matrices, time-of-day profiles, turn-ratio calibration).
+- Fleet mix (buses on real GTFS routes, trucks, emergency vehicles) -- currently
+  passenger cars only.
 - Scenario engine v1 (closure, accident, rush-hour disruption classes).
-- Plausibility-invariant checks on generated demand (v/c ratios, LOS distribution).
 
 See [docs/design/13_roadmap.md](../../../docs/design/13_roadmap.md), Week 2.

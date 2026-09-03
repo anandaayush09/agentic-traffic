@@ -31,15 +31,22 @@ tracks implementation status against that plan; it does not re-derive the archit
   zero-install SUMO binary discovery
   ([`src/atlas/common/sumo_locate.py`](src/atlas/common/sumo_locate.py)).
 
-**Week 2 (in progress) — real district network:**
+**Week 2 (in progress) — real district network + demand:**
 - A real 22-signalized-junction SUMO network built from OpenStreetMap (Midtown
   Manhattan, W 42nd–48th St / 6th–9th Ave), acquired and audited per
   [`data/networks/manhattan_midtown/AUDIT.md`](data/networks/manhattan_midtown/AUDIT.md)
   — connectivity-checked (single component, 100% coverage), loads and steps cleanly
   through the same `SumoTwinEnv` from Week 1.
   ([`scripts/build_district_network.py`](scripts/build_district_network.py))
-- Not yet done: demand generation (OD matrices, time-of-day profiles) and the scenario
-  engine (accident/closure/rush-hour disruption classes) — see
+- Four time-of-day demand periods (night/midday/am_peak/pm_peak,
+  [`scripts/generate_demand.py`](scripts/generate_demand.py)), validated against
+  plausibility invariants rather than fabricated ground truth: vehicle-count ordering,
+  a turn-direction sanity audit
+  ([`src/atlas/twin/demand.py`](src/atlas/twin/demand.py)), and a congestion proxy that
+  falls monotonically with demand — full results and an important calibration caveat in
+  AUDIT.md.
+- Not yet done: fleet mix (buses/trucks/emergency vehicles) and the scenario engine
+  (accident/closure/rush-hour disruption classes) — see
   [`docs/design/13_roadmap.md`](docs/design/13_roadmap.md), Week 2.
 
 Everything else described in `docs/design/` (the control plane, event bus, cognitive

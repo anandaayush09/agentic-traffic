@@ -4,6 +4,12 @@ Public API re-exported here so callers write `from atlas.twin import SumoTwinEnv
 of reaching into the `env` submodule directly.
 """
 
+from atlas.twin.demand import (
+    DemandConfig,
+    DemandPeriod,
+    parse_connection_directions,
+    turn_direction_counts,
+)
 from atlas.twin.env import JunctionState, LaneState, SumoTwinEnv, TwinEnvConfig, TwinEnvError
 
 __all__ = [
@@ -12,4 +18,8 @@ __all__ = [
     "TwinEnvError",
     "JunctionState",
     "LaneState",
+    "DemandConfig",
+    "DemandPeriod",
+    "parse_connection_directions",
+    "turn_direction_counts",
 ]

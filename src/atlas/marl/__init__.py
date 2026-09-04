@@ -5,5 +5,13 @@ architecture, this is NOT RLlib -- see network.py's module docstring for why.
 
 from atlas.marl.buffer import RolloutBuffer
 from atlas.marl.network import ActorCritic, build_action_mask
+from atlas.marl.ppo import PPOConfig, PPOTrainer, PPOUpdateStats
 
-__all__ = ["ActorCritic", "build_action_mask", "RolloutBuffer"]
+__all__ = [
+    "ActorCritic",
+    "build_action_mask",
+    "RolloutBuffer",
+    "PPOConfig",
+    "PPOTrainer",
+    "PPOUpdateStats",
+]

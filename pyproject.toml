@@ -17,7 +17,15 @@ dependencies = [
     "structlog>=26.0,<27",
     "gymnasium>=0.29,<1.1",
     "stable-baselines3>=2.3,<3",
-    "torch>=2.4,<3",
+    # Pinned narrow, not just "whatever satisfies stable-baselines3's own >=2.8,<3.0"
+    # declaration: torch==2.14.0 (the newest resolvable) hit a real bug loading SB3
+    # checkpoints on Windows -- SB3's zip loader (save_util.py's load_from_zip_file)
+    # passes a non-seekable zipfile.ZipExtFile stream straight to torch.load(), and
+    # very recent torch's C++ zip reader fails on that with a spurious "corrupted
+    # checkpoint" error (verified: the exact same weights load fine once extracted to
+    # a real file first). Pinned near SB3 2.9.0's declared floor, most likely to
+    # actually have been tested against.
+    "torch>=2.8,<2.9",
 ]
 
 [project.optional-dependencies]

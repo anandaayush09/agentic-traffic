@@ -18,6 +18,33 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
+from xml.etree import ElementTree
+
+from atlas.control.phases import green_phase_indices as _green_phase_indices
+
+
+def native_green_durations_from_net_file(
+    tls_id: str, net_file: Path
+) -> tuple[tuple[int, ...], tuple[float, ...]]:
+    """Reads a junction's own tlLogic green-phase durations directly from the built
+    network -- the "as designed" fixed-time plan, as an alternative to Webster's method
+    when no calibrated flow data is available yet. Returns (green_phase_indices,
+    durations_s), same order, ready to pass to `select_fixed_time_phase`.
+    """
+    root = ElementTree.parse(net_file).getroot()
+    logic = root.find(f".//tlLogic[@id='{tls_id}']")
+    if logic is None:
+        raise ValueError(f"No tlLogic found for traffic light '{tls_id}' in {net_file}")
+
+    phases = logic.findall("phase")
+    phase_states = [p.get("state", "") for p in phases]
+    green = _green_phase_indices(phase_states)
+    if not green:
+        raise ValueError(f"No green phases found for traffic light '{tls_id}'")
+
+    durations = tuple(float(phases[i].get("duration", "0")) for i in green)
+    return green, durations
 
 
 @dataclass(frozen=True, slots=True)

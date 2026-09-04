@@ -147,6 +147,17 @@ class SingleJunctionEnv(gym.Env[np.ndarray, np.integer]):
             self._twin.close()
             self._twin = None
 
+    @property
+    def connection(self) -> Any:
+        """The raw libsumo/traci handle, for callers that need to compute actions from
+        live simulation state this environment doesn't itself expose -- e.g. an
+        evaluation script running a classical controller (max-pressure, fixed-time)
+        through this same env for a fair side-by-side comparison against a trained
+        policy. Mirrors SumoTwinEnv.connection's escape-hatch precedent exactly.
+        """
+        twin, _ = self._require_started()
+        return twin.connection
+
     # -- internal helpers --
 
     def _require_started(self) -> tuple[SumoTwinEnv, SignalShield]:

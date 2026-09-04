@@ -31,6 +31,9 @@ data/networks/manhattan_midtown/*
 mlruns/
 mlartifacts/
 
+# Trained model checkpoints (regenerable via scripts/train_*.py)
+data/models/
+
 # Env files with secrets
 .env
 .env.*

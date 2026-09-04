@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
-from atlas.control.fixed_time import compute_webster_green_splits, select_fixed_time_phase
+from atlas.common.config import project_root
+from atlas.control.fixed_time import (
+    compute_webster_green_splits,
+    native_green_durations_from_net_file,
+    select_fixed_time_phase,
+)
 
 
 class TestComputeWebsterGreenSplits:
@@ -65,3 +73,26 @@ class TestSelectFixedTimePhase:
     def test_rejects_zero_total_cycle(self) -> None:
         with pytest.raises(ValueError, match="must be positive"):
             select_fixed_time_phase((0,), (0.0,), 0.0)
+
+
+class TestNativeGreenDurationsFromNetFile:
+    @classmethod
+    @pytest.fixture(scope="class")
+    def net_file(cls) -> Path:
+        sys.path.insert(0, str(project_root() / "scripts"))
+        import generate_sandbox_network
+
+        generate_sandbox_network.generate()
+        return generate_sandbox_network.NET_FILE
+
+    def test_reads_b1_native_durations(self, net_file: Path) -> None:
+        # B1's tlLogic (verified against net.net.xml before writing this): both green
+        # phases (0 and 2) have duration="42".
+        green_phases, durations = native_green_durations_from_net_file("B1", net_file)
+
+        assert green_phases == (0, 2)
+        assert durations == (42.0, 42.0)
+
+    def test_raises_for_unknown_tls_id(self, net_file: Path) -> None:
+        with pytest.raises(ValueError, match="No tlLogic found"):
+            native_green_durations_from_net_file("not_a_real_junction", net_file)

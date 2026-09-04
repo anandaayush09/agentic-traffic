@@ -8,6 +8,7 @@ instead of reaching into submodules directly.
 from atlas.control.fixed_time import (
     WebsterResult,
     compute_webster_green_splits,
+    native_green_durations_from_net_file,
     select_fixed_time_phase,
 )
 from atlas.control.max_pressure import (
@@ -32,6 +33,7 @@ __all__ = [
     "total_pressure",
     "WebsterResult",
     "compute_webster_green_splits",
+    "native_green_durations_from_net_file",
     "select_fixed_time_phase",
     "is_yellow_phase",
     "green_phase_indices",

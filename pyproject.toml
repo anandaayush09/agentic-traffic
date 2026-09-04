@@ -26,6 +26,7 @@ dependencies = [
     # a real file first). Pinned near SB3 2.9.0's declared floor, most likely to
     # actually have been tested against.
     "torch>=2.8,<2.9",
+    "ray>=2.40,<3",
 ]
 
 [project.optional-dependencies]
@@ -64,7 +65,17 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra --strict-markers"
+# test_rollout.py is excluded from collection entirely, not just deselected: `import ray`
+# alone (verified -- no ray.init() needed) permanently breaks subsequent libsumo imports
+# in that SAME process, and pytest imports every collected file regardless of marker
+# filtering, so a `-m "not ray_isolated"` filter alone is not enough -- the file must
+# never even be imported in the same process as libsumo-based tests. Run it separately
+# with `pytest -m ray_isolated -p no:cacheprovider tests/unit/test_rollout.py` (see that
+# file's module docstring for the full diagnosis).
+addopts = "-ra --strict-markers --ignore=tests/unit/test_rollout.py"
+markers = [
+    "ray_isolated: tests that import ray, which permanently breaks subsequent libsumo imports in that SAME process (verified: bare `import ray` alone is enough, ray.init() not required, and ray.shutdown() does not undo it -- a persistent native DLL collision the process never recovers from). Excluded from collection entirely by default (see addopts' --ignore); run in a separate pytest invocation.",
+]
 
 [tool.coverage.run]
 source = ["src/atlas"]

@@ -13,9 +13,35 @@ def is_yellow_phase(phase_state: str) -> bool:
     return any(c in "yY" for c in phase_state)
 
 
+def has_green_signal(phase_state: str) -> bool:
+    return any(c in "Gg" for c in phase_state)
+
+
 def green_phase_indices(phase_states: Sequence[str]) -> tuple[int, ...]:
-    """Indices of the non-yellow phases in `phase_states`, in their original order."""
-    return tuple(i for i, state in enumerate(phase_states) if not is_yellow_phase(state))
+    """Indices of the controllable green phases: phases that are NOT a yellow transition
+    AND that actually serve at least one movement. Both conditions are required, each
+    ruling out a real, verified pattern that a single condition alone misclassifies:
+
+    - "not yellow" alone is not enough: a junction in the Manhattan district (42430356,
+      42435663) has phases ['GGGGGG', 'yyyyyy', 'rrrrrr'] -- the all-red safety clearance
+      contains neither 'y' nor 'G', so "not yellow" alone would misclassify it as a
+      second controllable green phase. A controller must never be offered an all-red
+      state as a selectable target.
+    - "has G/g" alone is not enough: a sandbox junction (A1) has a yellow-transition
+      phase "yyyrrrGyy" that still carries a 'G' on one unaffected movement (a real,
+      valid SUMO pattern -- one signal group finishes its transition while another,
+      unrelated to the conflict being cleared, keeps running). "Has G/g" alone would
+      misclassify that transition phase as a second controllable green phase.
+
+    Requiring both conditions together handles all three cases correctly: a genuine
+    green phase (not yellow, has G/g) is included; a pure yellow phase (is yellow) and
+    an all-red clearance (no G/g) are both excluded.
+    """
+    return tuple(
+        i
+        for i, state in enumerate(phase_states)
+        if not is_yellow_phase(state) and has_green_signal(state)
+    )
 
 
 def yellow_phase_after(phase_states: Sequence[str], green_phase: int) -> int:

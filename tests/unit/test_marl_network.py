@@ -124,9 +124,10 @@ class TestEvaluateActions:
         batch_size = 8
         obs = torch.randn(batch_size, OBS_DIM)
         joint_obs = torch.randn(batch_size, OBS_DIM * NUM_AGENTS)
+        agent_id = torch.randint(0, NUM_AGENTS, (batch_size,))
         action = torch.randint(0, ACTION_DIM, (batch_size,))
 
-        log_prob, entropy, value = net.evaluate_actions(obs, joint_obs, action)
+        log_prob, entropy, value = net.evaluate_actions(obs, joint_obs, agent_id, action)
 
         assert log_prob.shape == (batch_size,)
         assert entropy.shape == (batch_size,)
@@ -143,20 +144,34 @@ class TestEvaluateActions:
         obs = torch.randn(1, OBS_DIM)
         joint_obs_a = torch.randn(1, OBS_DIM * NUM_AGENTS)
         joint_obs_b = torch.randn(1, OBS_DIM * NUM_AGENTS)
+        agent_id = torch.zeros(1, dtype=torch.long)
         action = torch.zeros(1, dtype=torch.long)
 
-        _, _, value_a = net.evaluate_actions(obs, joint_obs_a, action)
-        _, _, value_b = net.evaluate_actions(obs, joint_obs_b, action)
+        _, _, value_a = net.evaluate_actions(obs, joint_obs_a, agent_id, action)
+        _, _, value_b = net.evaluate_actions(obs, joint_obs_b, agent_id, action)
 
         assert value_a.item() != pytest.approx(value_b.item())
+
+    def test_value_depends_on_agent_id(self) -> None:
+        """The whole point of the per-agent-conditioned critic: the SAME joint_obs must
+        produce DIFFERENT values for different agent_id -- otherwise this would just be
+        a single shared team value with extra steps."""
+        net = ActorCritic(OBS_DIM, ACTION_DIM, NUM_AGENTS)
+        joint_obs = torch.randn(1, OBS_DIM * NUM_AGENTS)
+
+        value_agent_0 = net.get_value(joint_obs, torch.tensor([0]))
+        value_agent_1 = net.get_value(joint_obs, torch.tensor([1]))
+
+        assert value_agent_0.item() != pytest.approx(value_agent_1.item())
 
     def test_get_value_matches_evaluate_actions_value(self) -> None:
         net = ActorCritic(OBS_DIM, ACTION_DIM, NUM_AGENTS)
         joint_obs = torch.randn(1, OBS_DIM * NUM_AGENTS)
         obs = torch.randn(1, OBS_DIM)
+        agent_id = torch.tensor([2])
         action = torch.zeros(1, dtype=torch.long)
 
-        _, _, value_from_evaluate = net.evaluate_actions(obs, joint_obs, action)
-        value_from_get_value = net.get_value(joint_obs)
+        _, _, value_from_evaluate = net.evaluate_actions(obs, joint_obs, agent_id, action)
+        value_from_get_value = net.get_value(joint_obs, agent_id)
 
         assert torch.equal(value_from_evaluate, value_from_get_value)

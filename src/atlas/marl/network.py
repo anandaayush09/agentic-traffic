@@ -18,6 +18,16 @@ state during training only"). Its input dimension is therefore fixed to one spec
 `num_agents` (one curriculum stage = one critic instance, not something reused across
 different district sizes).
 
+**Per-agent-conditioned, not a single shared team value** -- a design correction made
+while building the rollout buffer (Part 6.1 leaves this granularity unspecified, but the
+reward it also specifies is explicitly per-junction/per-agent, e.g. one junction's own
+local pressure -- a single shared critic output has no consistent per-agent quantity to
+regress to at the same timestep). Matches the actual MAPPO paper's design (Yu et al.
+2022): one shared critic network, but its input includes which agent it is valuing (a
+one-hot agent index appended to the joint observation), so ONE parameter-shared network
+still produces DIFFERENT value estimates for different agents from the same joint state
+-- preserving both parameter sharing and per-agent credit assignment.
+
 Action masking: an agent whose real green-phase count is less than the padded
 `max_green_phases` (Week 4's MultiAgentSignalEnv again) must never have probability mass
 on the nonexistent padding actions -- masked logits are set to -inf before the softmax,
@@ -30,6 +40,7 @@ from __future__ import annotations
 from typing import cast
 
 import torch
+import torch.nn.functional as F  # noqa: N812 (the universal PyTorch convention)
 from torch import Tensor, nn
 from torch.distributions import Categorical
 
@@ -69,8 +80,11 @@ class ActorCritic(nn.Module):
             nn.Tanh(),
             nn.Linear(hidden_dim, action_dim),
         )
+        # + num_agents: a one-hot agent index appended to the joint observation, so this
+        # one shared network can output different values for different agents from the
+        # same joint state -- see the module docstring's "per-agent-conditioned" note.
         self.critic = nn.Sequential(
-            nn.Linear(obs_dim * num_agents, hidden_dim),
+            nn.Linear(obs_dim * num_agents + num_agents, hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
@@ -105,19 +119,30 @@ class ActorCritic(nn.Module):
         return action, log_prob, entropy
 
     def evaluate_actions(
-        self, obs: Tensor, joint_obs: Tensor, action: Tensor, action_mask: Tensor | None = None
+        self,
+        obs: Tensor,
+        joint_obs: Tensor,
+        agent_id: Tensor,
+        action: Tensor,
+        action_mask: Tensor | None = None,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """For training (centralized -- the critic sees joint_obs): the log-probability
         and entropy of previously-taken `action` under the current policy, plus the
-        critic's value estimate from the joint observation. Returns
-        (log_prob, entropy, value).
+        critic's per-agent value estimate from the joint observation. `agent_id`:
+        (batch,) long tensor of agent indices in [0, num_agents), telling the shared
+        critic which agent to value. Returns (log_prob, entropy, value).
         """
         logits = self.action_logits(obs, action_mask)
         dist = Categorical(logits=logits)
         log_prob = dist.log_prob(action)  # type: ignore[no-untyped-call]
         entropy = dist.entropy()  # type: ignore[no-untyped-call]
-        value = cast(Tensor, self.critic(joint_obs).squeeze(-1))
+        value = self.get_value(joint_obs, agent_id)
         return log_prob, entropy, value
 
-    def get_value(self, joint_obs: Tensor) -> Tensor:
-        return cast(Tensor, self.critic(joint_obs).squeeze(-1))
+    def get_value(self, joint_obs: Tensor, agent_id: Tensor) -> Tensor:
+        """joint_obs: (batch, obs_dim * num_agents). agent_id: (batch,) long tensor of
+        agent indices in [0, num_agents) -- which agent's value this call estimates.
+        """
+        agent_one_hot = F.one_hot(agent_id, num_classes=self.num_agents).float()
+        critic_input = torch.cat([joint_obs, agent_one_hot], dim=-1)
+        return cast(Tensor, self.critic(critic_input).squeeze(-1))

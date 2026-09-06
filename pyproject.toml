@@ -28,6 +28,13 @@ dependencies = [
     "torch>=2.8,<2.9",
     "ray>=2.40,<3",
     "mlflow>=2.18,<3",
+    "jsonschema>=4.23,<5",
+    # kafka-python, not confluent-kafka: pure Python, no native/C-extension dependency.
+    # This project has hit three separate native-DLL collisions on Windows already
+    # (SB3/torch zip loading, libsumo-in-Ray, libsumo-vs-mlflow's pyarrow) -- a librdkafka
+    # binding is exactly the kind of extra native surface that pattern predicts trouble
+    # from, and Redpanda's Kafka-API compatibility means either client works identically.
+    "kafka-python>=2.0,<3",
 ]
 
 [project.optional-dependencies]
@@ -76,6 +83,7 @@ pythonpath = ["src"]
 addopts = "-ra --strict-markers --ignore=tests/unit/test_rollout.py"
 markers = [
     "ray_isolated: tests that import ray, which permanently breaks subsequent libsumo imports in that SAME process (verified: bare `import ray` alone is enough, ray.init() not required, and ray.shutdown() does not undo it -- a persistent native DLL collision the process never recovers from). Excluded from collection entirely by default (see addopts' --ignore); run in a separate pytest invocation.",
+    "integration: tests requiring a live external service (e.g. a running Redpanda/Kafka broker). Not excluded from collection -- unlike ray_isolated, importing these files is always safe -- but individual tests skip themselves via skipif when the service isn't reachable, since this dev machine has no Docker (see the ATLAS dev-environment memory).",
 ]
 
 [tool.coverage.run]

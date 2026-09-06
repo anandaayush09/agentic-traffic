@@ -1,15 +1,43 @@
 # ATLAS local development / demo stack.
 #
-# Week 1 status: intentionally empty. Per the roadmap (docs/design/13_roadmap.md, Week 1),
-# this file exists now so `docker compose config` validates and the `core`/`full` profile
-# structure described in docs/design/10_deployment.md section 10.1 is documented, but no
-# containers are defined yet -- there is nothing to containerize until the event bus
-# (Redpanda, Week 5) and datastores (Redis/Postgres, Week 5-6) land. Adding empty service
-# stubs ahead of that would be scaffolding nothing depends on; see the repo-wide rule
-# against speculative abstractions.
+# Week 5: the first real service lands -- Redpanda (Kafka API), backing atlas.bus
+# (docs/design/05_communication.md). Redis/Postgres/control-plane workers are still Week
+# 5-6 work; adding empty stubs for those ahead of time would be scaffolding nothing
+# depends on yet (the repo-wide rule against speculative abstractions), so `core` below
+# has exactly one service until they land.
+#
+# NOTE: Docker is not installed on this project's primary dev machine (see the ATLAS
+# dev-environment memory) -- this file is written correctly against Redpanda's documented
+# single-node dev-mode flags, but has not been run locally. `docker compose config` and an
+# actual `docker compose --profile core up` are expected to be verified on a machine with
+# Docker (or in CI), not assumed to work from inspection alone.
 #
 # Planned profiles (filled in as each milestone lands):
 #   core  - twin, bus, redis, postgres, one control-plane worker  (Week 5-6)
 #   full  - core + cognitive plane + ML services + frontend + monitoring (Week 9-10)
 
-services: {}
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: atlas-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=512M
+      - --overprovisioned
+      - --node-id=0
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://localhost:9092
+      - --pandaproxy-addr=PLAINTEXT://0.0.0.0:8082
+      - --advertise-pandaproxy-addr=PLAINTEXT://localhost:8082
+      - --check=false
+    ports:
+      - "9092:9092" # Kafka API -- what atlas.bus (kafka-python) connects to
+      - "8082:8082" # Pandaproxy (REST) -- not used by atlas.bus, exposed for manual debugging
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info --brokers localhost:9092 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles: ["core", "full"]

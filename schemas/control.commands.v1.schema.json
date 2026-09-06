@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/control.commands.v1.schema.json",
+  "title": "atlas.control.commands.v1",
+  "description": "A signal command from an actor (RL agent, classical controller, preemption, or operator) to the twin adapter (docs/design/05_communication.md section 5.3). Adapted from the design doc's representative example: intersection_id's pattern is loosened from the doc's illustrative '^J[0-9]{3}$' to match this project's real SUMO/TraCI trafficlight ids (e.g. '42430333', 'GS_42439981'), which didn't exist yet when that schema was drafted.",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "intersection_id", "actor", "action", "policy_version"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "intersection_id": { "type": "string", "minLength": 1 },
+    "actor": {
+      "enum": ["rl_agent", "max_pressure", "fixed_time", "preemption", "operator"]
+    },
+    "action": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["set_phase", "extend_phase", "set_program"] },
+        "phase_id": { "type": "integer", "minimum": 0 },
+        "duration_s": { "type": "number", "minimum": 0 }
+      }
+    },
+    "shield": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "modified": { "type": "boolean" },
+        "reason": {
+          "enum": ["min_green", "max_green", "yellow_transition", "preemption_lock", null]
+        }
+      }
+    },
+    "policy_version": { "type": "string", "minLength": 1 },
+    "priority": { "enum": ["normal", "preemption"], "default": "normal" }
+  }
+}

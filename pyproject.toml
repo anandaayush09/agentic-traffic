@@ -27,6 +27,7 @@ dependencies = [
     # actually have been tested against.
     "torch>=2.8,<2.9",
     "ray>=2.40,<3",
+    "mlflow>=2.18,<3",
 ]
 
 [project.optional-dependencies]

@@ -33,6 +33,7 @@ mlartifacts/
 
 # Trained model checkpoints (regenerable via scripts/train_*.py)
 data/models/
+data/checkpoints/
 
 # Env files with secrets
 .env

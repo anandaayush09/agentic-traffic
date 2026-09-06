@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/system.health.v1.schema.json",
+  "title": "atlas.system.health.v1",
+  "description": "Per-service heartbeat (docs/design/05_communication.md section 5.2: 'All services -> watchdog, Prometheus sink', 5s cadence) and docs/design/04_agent_architecture.md section 4.1's watchdog pattern: a service's own liveness signal, consumed by the Watchdog service to detect staleness and trigger fallback.",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "service_id", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "service_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "e.g. 'intersection_agent.42430333' -- service type + the resource it owns, so one watchdog instance can track many agent processes by heartbeat key alone."
+    },
+    "status": { "enum": ["ok", "degraded"] },
+    "detail": {
+      "type": "object",
+      "description": "Free-form service-specific context (current mode, last decision latency, etc.) -- deliberately not a closed schema, since every service type reports different useful detail here.",
+      "additionalProperties": true
+    }
+  }
+}

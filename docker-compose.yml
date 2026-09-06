@@ -1,19 +1,21 @@
 # ATLAS local development / demo stack.
 #
-# Week 5: the first real service lands -- Redpanda (Kafka API), backing atlas.bus
-# (docs/design/05_communication.md). Redis/Postgres/control-plane workers are still Week
-# 5-6 work; adding empty stubs for those ahead of time would be scaffolding nothing
-# depends on yet (the repo-wide rule against speculative abstractions), so `core` below
-# has exactly one service until they land.
+# Week 5 added the first real service -- Redpanda (Kafka API), backing atlas.bus
+# (docs/design/05_communication.md). Week 6 adds the first control-plane services:
+# intersection_agent (one junction's decision loop, docs/design/04_agent_architecture.md
+# section 4.1) and watchdog (heartbeat staleness detection / fallback trigger, section
+# 4.1's failure-recovery pattern). Redis/Postgres are still later work; adding empty
+# stubs for those ahead of time would be scaffolding nothing depends on yet (the
+# repo-wide rule against speculative abstractions).
 #
 # NOTE: Docker is not installed on this project's primary dev machine (see the ATLAS
-# dev-environment memory) -- this file is written correctly against Redpanda's documented
-# single-node dev-mode flags, but has not been run locally. `docker compose config` and an
-# actual `docker compose --profile core up` are expected to be verified on a machine with
-# Docker (or in CI), not assumed to work from inspection alone.
+# dev-environment memory) -- this file (and the Dockerfile it builds) is written
+# correctly against documented flags/recipes, but has not been run locally. `docker
+# compose config` and an actual `docker compose --profile core up` are expected to be
+# verified on a machine with Docker (or in CI), not assumed to work from inspection alone.
 #
 # Planned profiles (filled in as each milestone lands):
-#   core  - twin, bus, redis, postgres, one control-plane worker  (Week 5-6)
+#   core  - twin, bus, redis, postgres, control-plane worker(s)  (Week 5-6)
 #   full  - core + cognitive plane + ML services + frontend + monitoring (Week 9-10)
 
 services:
@@ -40,4 +42,38 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    profiles: ["core", "full"]
+
+  intersection_agent:
+    build: .
+    container_name: atlas-intersection-agent
+    command:
+      - python
+      - -m
+      - atlas.services.intersection_agent
+      - --tls-id=42430333 # one corridor junction, as a smoke-scenario demo
+      - --network=manhattan_midtown
+      - --mode=max_pressure
+      - --kafka-brokers=redpanda:9092
+    ports:
+      - "8000:8000"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    profiles: ["core", "full"]
+
+  watchdog:
+    build: .
+    container_name: atlas-watchdog
+    command:
+      - python
+      - -m
+      - atlas.services.watchdog
+      - --kafka-brokers=redpanda:9092
+      - --stale-after-s=10 # 2 missed 5s heartbeat cycles (docs/design/04_agent_architecture.md)
+    ports:
+      - "8001:8001"
+    depends_on:
+      redpanda:
+        condition: service_healthy
     profiles: ["core", "full"]

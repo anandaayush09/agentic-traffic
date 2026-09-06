@@ -211,6 +211,20 @@ class MultiAgentSignalEnv:
             self._twin.close()
             self._twin = None
 
+    @property
+    def connection(self) -> Any:
+        """Escape hatch to the raw libsumo/traci handle, for exactly the kind of direct
+        lane/edge-level queries this wrapper doesn't expose (e.g. an Intersection Agent
+        service computing max-pressure/fixed-time fallback decisions independently of
+        the RL action interface) -- the same documented pattern already used by
+        `SumoTwinEnv.connection` and `SingleJunctionEnv.connection`.
+        """
+        return self._require_twin().connection
+
+    @property
+    def sim_time(self) -> float:
+        return self._require_twin().sim_time
+
     # -- internal helpers --
 
     def _require_twin(self) -> SumoTwinEnv:

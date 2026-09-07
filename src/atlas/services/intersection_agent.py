@@ -79,13 +79,6 @@ class IntersectionAgentService:
         self._native_durations = native_green_durations_from_net_file(
             config.tls_id, config.net_file
         )
-        self._net: ActorCritic | None = None
-        if config.model_path is not None:
-            self._net = ActorCritic(
-                obs_dim=self._observation_dim(), action_dim=config.max_green_phases, num_agents=1
-            )
-            self._net.load_state_dict(torch.load(config.model_path, weights_only=True))
-            self._net.eval()
 
         self._env = MultiAgentSignalEnv(
             MultiAgentSignalEnvConfig(
@@ -102,14 +95,25 @@ class IntersectionAgentService:
                 decision_interval_s=config.decision_interval_s,
             )
         )
+
+        self._net: ActorCritic | None = None
+        if config.model_path is not None:
+            # Reads obs_dim from the env itself (not re-derived here) so this can never
+            # silently drift out of sync with MultiAgentSignalEnv's own observation
+            # shape (e.g. Week 7's corridor-hint feature added a dimension after this
+            # service was first written).
+            self._net = ActorCritic(
+                obs_dim=self._env.observation_dim,
+                action_dim=config.max_green_phases,
+                num_agents=1,
+            )
+            self._net.load_state_dict(torch.load(config.model_path, weights_only=True))
+            self._net.eval()
+
         self._obs: np.ndarray | None = None
         self._last_action = 0
         self._last_heartbeat: datetime | None = None
         self._running = False
-
-    def _observation_dim(self) -> int:
-        features_per_lane = 4
-        return features_per_lane * self.config.max_lanes + self.config.max_green_phases + 1
 
     def start(self) -> None:
         observations = self._env.reset(seed=self.config.seed)

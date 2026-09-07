@@ -20,7 +20,7 @@ from atlas.twin import TwinEnvConfig
 TLS_IDS = ["A1", "B0", "B1", "B2"]
 MAX_LANES = 4  # B1's actual lane count; A1/B0/B2 have 3, so 1 padding slot each
 MAX_GREEN_PHASES = 2  # every junction's actual count
-OBS_DIM = 4 * MAX_LANES + MAX_GREEN_PHASES + 1  # = 19
+OBS_DIM = 4 * MAX_LANES + MAX_GREEN_PHASES + 2  # = 20 (+1 elapsed, +1 Week 7 corridor hint)
 
 
 @pytest.fixture(scope="session")
@@ -170,3 +170,34 @@ class TestStepContract:
                 assert infos[t]["shield_reason"] != "invalid_phase"
         finally:
             env.close()
+
+
+class TestCorridorHints:
+    """Week 7: an advisory feature appended to the observation vector -- see
+    docs/design/04_agent_architecture.md section 4.2."""
+
+    def test_defaults_to_zero_when_never_set(self, env: MultiAgentSignalEnv) -> None:
+        observations = env.reset()
+        for tls_id in TLS_IDS:
+            assert observations[tls_id][-1] == pytest.approx(0.0)
+
+    def test_set_hints_appear_in_the_next_observation(self, env: MultiAgentSignalEnv) -> None:
+        env.reset()
+        env.set_corridor_hints({"B1": 0.75})
+
+        observations, _, _, _, _ = env.step({t: 0 for t in TLS_IDS})
+
+        assert observations["B1"][-1] == pytest.approx(0.75)
+        assert observations["A1"][-1] == pytest.approx(0.0)  # untouched agent unaffected
+
+    def test_partial_update_does_not_clear_previously_set_hints(
+        self, env: MultiAgentSignalEnv
+    ) -> None:
+        env.reset()
+        env.set_corridor_hints({"B0": 0.5, "B1": 0.2})
+        env.set_corridor_hints({"B1": 0.9})  # only updates B1
+
+        observations, _, _, _, _ = env.step({t: 0 for t in TLS_IDS})
+
+        assert observations["B0"][-1] == pytest.approx(0.5)
+        assert observations["B1"][-1] == pytest.approx(0.9)

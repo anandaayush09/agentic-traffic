@@ -103,11 +103,21 @@ class MultiAgentSignalEnv:
             )
 
         self.agents: list[str] = list(config.tls_ids)
-        self.observation_dim = _FEATURES_PER_LANE * config.max_lanes + config.max_green_phases + 1
+        # +1 for elapsed-phase-time, +1 for the corridor-coordinator hint (Week 7,
+        # docs/design/04_agent_architecture.md section 4.2's "hints... consumed as
+        # policy observation features"). Defaults to 0.0 for every agent until
+        # set_corridor_hints() is called -- an env with no coordinator attached (every
+        # env before Week 7, and every env in a corridor with no coordinator running)
+        # behaves identically to before this feature existed, which is also exactly
+        # what makes hint-dropout training (the roadmap's other Week 7 ask) trivial: an
+        # agent trained with hints sometimes zeroed out already sees that input
+        # distribution during training, not a special-cased augmentation.
+        self.observation_dim = _FEATURES_PER_LANE * config.max_lanes + config.max_green_phases + 2
         self.action_dim = config.max_green_phases
 
         self._twin: SumoTwinEnv | None = None
         self._shields: dict[str, SignalShield] = {}
+        self._corridor_hints: dict[str, float] = {}
 
     def reset(self, *, seed: int | None = None) -> dict[str, np.ndarray]:
         if self._twin is not None:
@@ -225,6 +235,18 @@ class MultiAgentSignalEnv:
     def sim_time(self) -> float:
         return self._require_twin().sim_time
 
+    def set_corridor_hints(self, hints: dict[str, float]) -> None:
+        """Sets the advisory corridor-hint feature consumed by `_build_observation`
+        (Week 7, docs/design/04_agent_architecture.md section 4.2). `hints` maps
+        `tls_id -> hint value`; agents not present in `hints` keep whatever value they
+        last had (or 0.0 if never set) -- this is a "the coordinator publishes updates
+        for its own corridor's members" API, not a full-district reset every call. Pure
+        advisory data: nothing about action masking, the shield, or reward computation
+        reads this -- single-writer principle (docs/design/05_communication.md section
+        5.1), only the observation vector.
+        """
+        self._corridor_hints.update(hints)
+
     # -- internal helpers --
 
     def _require_twin(self) -> SumoTwinEnv:
@@ -276,5 +298,7 @@ class MultiAgentSignalEnv:
 
         elapsed_norm = min(shield.elapsed_s / self._config.shield_config.max_green_s, 1.0)
         features.append(elapsed_norm)
+
+        features.append(self._corridor_hints.get(tls_id, 0.0))
 
         return np.array(features, dtype=np.float32)

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/incident.events.v1.schema.json",
+  "title": "atlas.incident.events.v1",
+  "description": "An incident's lifecycle state, from detection through triage/response to clearance (docs/design/05_communication.md section 5.3; docs/design/04_agent_architecture.md section 4.4's Supervisor Agent consumes this). Emitted by the anomaly detection service (Week 9 tiers 1/2) or the scenario engine, and updated by the Supervisor as it triages.",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "incident_id", "class", "status", "confidence"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "incident_id": { "type": "string", "minLength": 1 },
+    "class": {
+      "enum": [
+        "accident", "closure", "construction", "weather", "event_surge",
+        "sensor_fault", "comms_fault", "emergency_run", "vip_run", "unknown"
+      ]
+    },
+    "status": { "enum": ["detected", "triaged", "responding", "monitoring", "cleared"] },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "link_ids": { "type": "array", "items": { "type": "string" } },
+        "geo": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "msg_ids / what-if run ids supporting this state"
+    }
+  }
+}

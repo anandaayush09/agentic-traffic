@@ -1,0 +1,30 @@
+name: Eval smoke suite
+
+# Nightly CI regression gate -- Week 6 roadmap (docs/design/13_roadmap.md): "eval.yml
+# nightly mini-suite (2-junction smoke + district vs fixed-time) as CI regression gate".
+# Separate workflow from ci.yml (which runs on every push/PR) since this rebuilds the full
+# manhattan_midtown district from OSM on every run -- correct to do nightly, wasteful to
+# do on every commit. `workflow_dispatch` lets it be triggered manually too, e.g. to
+# verify a change to max_pressure.py/shield.py before merging.
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC nightly
+  workflow_dispatch: {}
+
+jobs:
+  eval-smoke-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Run eval smoke suite (2-junction smoke + district vs fixed-time)
+        run: uv run python scripts/eval_smoke_suite.py --num-decisions 100

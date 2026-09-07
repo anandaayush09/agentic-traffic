@@ -17,6 +17,14 @@ from atlas.cognitive.playbooks import (
     SwitchToMaxPressureParams,
     WeatherCapacityDerateParams,
 )
+from atlas.cognitive.provider_chain import (
+    PlaybookProvider,
+    ProviderChain,
+    ProviderError,
+    ProviderRateLimitedError,
+    ProviderUnavailableError,
+    TokenBucket,
+)
 
 __all__ = [
     "PlaybookSpec",
@@ -30,4 +38,10 @@ __all__ = [
     "SwitchToMaxPressureParams",
     "HoldCurrentPlanParams",
     "map_incident_to_playbook",
+    "PlaybookProvider",
+    "ProviderChain",
+    "ProviderError",
+    "ProviderRateLimitedError",
+    "ProviderUnavailableError",
+    "TokenBucket",
 ]

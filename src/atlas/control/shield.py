@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from atlas.control.phases import green_phase_indices as _green_phase_indices
 
-ShieldReason = Literal["min_green", "max_green", "invalid_phase"]
+ShieldReason = Literal["min_green", "max_green", "invalid_phase", "preemption_lock"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +156,22 @@ class SignalShield:
             return ShieldDecision(phase=self._current_phase, modified=True, reason="invalid_phase")
 
         return ShieldDecision(phase=effective_requested, modified=False, reason=None)
+
+    def force(self, phase: int) -> ShieldDecision:
+        """Unconditionally applies `phase`, bypassing min/max-green -- the Preemption
+        Overlay's mechanism (docs/design/04_agent_architecture.md section 4.3: "command
+        green waves... phase to the approach's green with standard transition") for
+        commanding a junction during an active emergency lock, when the normal timing
+        envelope must yield to a higher-priority safety concern. Still refuses a phase
+        that isn't one of this junction's real green phases -- overriding the timing
+        envelope is intentional; letting a bogus phase index through never is.
+        """
+        if phase not in self._program.green_phase_indices:
+            raise ValueError(f"{phase} is not a green phase for '{self._program.tls_id}'")
+        modified = phase != self._current_phase
+        return ShieldDecision(
+            phase=phase, modified=modified, reason="preemption_lock" if modified else None
+        )
 
     def advance(self, seconds: float) -> None:
         """Call once a decision has been applied and the simulation has moved forward by

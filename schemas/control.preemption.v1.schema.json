@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/control.preemption.v1.schema.json",
+  "title": "atlas.control.preemption.v1",
+  "description": "A lock/unlock lifecycle event from the Preemption Overlay (docs/design/04_agent_architecture.md section 4.3; docs/design/05_communication.md section 5.2's topic taxonomy). One event per PreemptionOverlay state transition for one junction on one run -- acquired/released, not the run's overall state (which is PreemptionOverlay.get_run's concern, not a bus event).",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "run_id", "intersection_id", "event", "priority"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "intersection_id": { "type": "string", "minLength": 1 },
+    "event": { "enum": ["lock_acquired", "lock_denied", "lock_released"] },
+    "priority": { "enum": ["emergency", "vip"] },
+    "phase_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Present on lock_acquired: the phase forced for the duration of the lock."
+    }
+  }
+}

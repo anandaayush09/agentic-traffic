@@ -131,6 +131,40 @@ class TestSignalShieldExamples:
 
         assert shield.legal_actions() == frozenset({0, 1, 2})
 
+    def test_force_bypasses_min_green(self) -> None:
+        """Week 7's Preemption Overlay mechanism: an emergency vehicle can't wait for
+        the normal min-green timer -- force() must switch immediately regardless."""
+        shield = self._make_shield(min_green_s=10.0)
+        shield.advance(1.0)  # far short of min_green
+
+        decision = shield.force(1)
+
+        assert decision == ShieldDecision(phase=1, modified=True, reason="preemption_lock")
+
+    def test_force_bypasses_max_green(self) -> None:
+        """Symmetric case: force() can also hold a phase PAST max_green, since the
+        emergency vehicle -- not the normal timing envelope -- decides when this
+        junction is done being locked."""
+        shield = self._make_shield(max_green_s=60.0)
+        shield.advance(90.0)  # already past max_green
+
+        decision = shield.force(shield.current_phase)
+
+        assert decision == ShieldDecision(phase=shield.current_phase, modified=False, reason=None)
+
+    def test_force_rejects_a_phase_that_is_not_green(self) -> None:
+        shield = self._make_shield()
+
+        with pytest.raises(ValueError, match="not a green phase"):
+            shield.force(99)
+
+    def test_force_to_the_current_phase_is_not_modified(self) -> None:
+        shield = self._make_shield()
+
+        decision = shield.force(shield.current_phase)
+
+        assert decision == ShieldDecision(phase=shield.current_phase, modified=False, reason=None)
+
 
 # -- Property-based invariant tests --
 

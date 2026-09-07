@@ -4,6 +4,15 @@ available fallback), the provider chain itself, the what-if tool, and the LangGr
 Supervisor graph tying all of it together.
 """
 
+from atlas.cognitive.analyst import (
+    AnalystAgent,
+    CounterfactualResult,
+    DecisionLogEntry,
+    DecisionLogStore,
+    DecisionNotFoundError,
+    explain_decision,
+    run_counterfactual,
+)
 from atlas.cognitive.deterministic_mapper import map_incident_to_playbook
 from atlas.cognitive.playbooks import (
     DEFAULT_PLAYBOOKS,
@@ -51,4 +60,11 @@ __all__ = [
     "SupervisorState",
     "build_supervisor_graph",
     "initial_state",
+    "AnalystAgent",
+    "CounterfactualResult",
+    "DecisionLogEntry",
+    "DecisionLogStore",
+    "DecisionNotFoundError",
+    "explain_decision",
+    "run_counterfactual",
 ]

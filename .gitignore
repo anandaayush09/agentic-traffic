@@ -35,6 +35,11 @@ mlartifacts/
 data/models/
 data/checkpoints/
 
+# Ultralytics YOLO: auto-downloaded pretrained checkpoints + its own run output dir
+yolov8*.pt
+yolo11*.pt
+runs/
+
 # Env files with secrets
 .env
 .env.*

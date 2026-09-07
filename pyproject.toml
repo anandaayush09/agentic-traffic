@@ -53,6 +53,12 @@ dev = [
     "types-pyyaml>=6.0,<7",
     "hypothesis>=6.100,<7",
     "httpx>=0.27,<1", # FastAPI's own TestClient dependency
+    # Only for scripts/export_corridor_geometry.py: sumolib's convertXY2LonLat needs
+    # pyproj to invert the network's UTM projection back to lon/lat for the frontend
+    # map. A standalone wheel (bundles its own PROJ build, no shared native surface
+    # with libsumo/torch/ray) -- verified it imports and converts correctly alongside
+    # libsumo in the same process before relying on it here.
+    "pyproj>=3.7,<4",
 ]
 # Only scripts/train_yolo_detector.py and scripts/export_onnx_int8.py need these --
 # GPU-bound Kaggle-execution scripts (docs/design/06_ai_pipeline.md section 6.3), not

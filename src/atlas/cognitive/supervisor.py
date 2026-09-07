@@ -59,6 +59,7 @@ def build_supervisor_graph(
     net_file: Path,
     route_file: Path,
     checkpointer: BaseCheckpointSaver[str],
+    additional_files: list[Path] | None = None,
 ) -> CompiledStateGraph[SupervisorState, None, SupervisorState, SupervisorState]:
     def classify(state: SupervisorState) -> dict[str, object]:
         return {"status": "triaged"}
@@ -75,7 +76,9 @@ def build_supervisor_graph(
     def verify(state: SupervisorState) -> dict[str, object]:
         assert state["proposal"] is not None  # parameterize always runs first
         proposal = PlaybookProposal.model_validate(state["proposal"])
-        result: WhatIfResult = run_what_if(proposal, net_file, route_file)
+        result: WhatIfResult = run_what_if(
+            proposal, net_file, route_file, additional_files=additional_files
+        )
         return {"what_if_checked": result.checked, "what_if_improved": result.improved}
 
     def decide(state: SupervisorState) -> dict[str, object]:

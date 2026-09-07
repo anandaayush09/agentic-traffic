@@ -46,7 +46,17 @@ def run_what_if(
     route_file: Path,
     num_decisions: int = 40,
     seed: int = 42,
+    additional_files: list[Path] | None = None,
 ) -> WhatIfResult:
+    """`additional_files`: SUMO additional files (e.g. a network's `vtypes.add.xml`)
+    needed alongside `route_file`. Real gap this parameter closes: manhattan_midtown's
+    demand routes reference vehicle types defined in a separate fleet-mix additional
+    file (Week 2 part 4), not inline -- omitting it isn't a problem on the sandbox
+    network (no separate vtypes file there), which is why this went unnoticed until
+    exercised against manhattan_midtown for real via the Week 10 dashboard's demo
+    incident flow (`libsumo.libsumo.TraCIException: The vehicle type
+    'passenger_vtype'... is not known`).
+    """
     if proposal.playbook_name == "hold_current_plan":
         return WhatIfResult(
             checked=True, improved=True, baseline_mean_pressure=None, proposed_mean_pressure=None
@@ -62,7 +72,12 @@ def run_what_if(
                 proposed_mean_pressure=None,
             )
         return _compare_max_pressure_vs_fixed_time(
-            [str(j) for j in junction_ids], net_file, route_file, num_decisions, seed
+            [str(j) for j in junction_ids],
+            net_file,
+            route_file,
+            num_decisions,
+            seed,
+            additional_files or [],
         )
 
     return WhatIfResult(
@@ -71,7 +86,12 @@ def run_what_if(
 
 
 def _compare_max_pressure_vs_fixed_time(
-    junction_ids: list[str], net_file: Path, route_file: Path, num_decisions: int, seed: int
+    junction_ids: list[str],
+    net_file: Path,
+    route_file: Path,
+    num_decisions: int,
+    seed: int,
+    additional_files: list[Path],
 ) -> WhatIfResult:
     from atlas.control.fixed_time import native_green_durations_from_net_file
     from atlas.control.shield import ShieldConfig
@@ -87,7 +107,12 @@ def _compare_max_pressure_vs_fixed_time(
     def make_env() -> MultiAgentSignalEnv:
         return MultiAgentSignalEnv(
             MultiAgentSignalEnvConfig(
-                twin_config=TwinEnvConfig(name="what_if", net_file=net_file, route_file=route_file),
+                twin_config=TwinEnvConfig(
+                    name="what_if",
+                    net_file=net_file,
+                    route_file=route_file,
+                    additional_files=additional_files,
+                ),
                 tls_ids=junction_ids,
                 max_lanes=max_lanes,
                 max_green_phases=2,

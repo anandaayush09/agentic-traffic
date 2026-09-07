@@ -31,6 +31,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
@@ -118,9 +119,26 @@ class CognitiveApiService:
         return self.get_incident(incident_id)
 
 
-def create_app(service: CognitiveApiService, jwt_secret: str) -> FastAPI:
+def create_app(
+    service: CognitiveApiService,
+    jwt_secret: str,
+    dashboard_origins: list[str] | None = None,
+) -> FastAPI:
     app = FastAPI(title="Cognitive API")
     require_jwt = require_operator(jwt_secret)
+
+    # The Week 10 React dashboard (frontend/) runs on Vite's dev server, a different
+    # origin than this API -- CORS is required for its fetch() calls to succeed at
+    # all, not an optional hardening step. Defaults to the Vite dev server's own
+    # default port; explicit, not a wildcard, since mutating endpoints sit behind
+    # this (JWT is the real gate, but there's no reason to also accept arbitrary
+    # origins for the read-only ones).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=dashboard_origins or ["http://localhost:5173"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:

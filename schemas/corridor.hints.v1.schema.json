@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/corridor.hints.v1.schema.json",
+  "title": "atlas.corridor.hints.v1",
+  "description": "Per-member green-wave offset hints from one Corridor Coordinator, recomputed every 60s (docs/design/04_agent_architecture.md section 4.2; docs/design/05_communication.md section 5.2's topic table). Advisory only -- consumed as a policy observation feature (MultiAgentSignalEnv.set_corridor_hints), never a command; intersections remain the single writer of their own signals.",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "corridor_id", "member_hints"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "corridor_id": { "type": "string", "minLength": 1 },
+    "member_hints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["intersection_id", "offset_s", "hint_value"],
+        "additionalProperties": false,
+        "properties": {
+          "intersection_id": { "type": "string", "minLength": 1 },
+          "offset_s": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Recommended green-start offset relative to the corridor's first junction, from greenwave.compute_greenwave_offsets."
+          },
+          "hint_value": {
+            "type": "number",
+            "description": "The normalized value actually fed into the agent's observation vector (MultiAgentSignalEnv.set_corridor_hints) -- a derived, bounded transform of offset_s, not the raw seconds figure."
+          }
+        }
+      }
+    }
+  }
+}

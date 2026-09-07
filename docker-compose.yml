@@ -1,11 +1,12 @@
 # ATLAS local development / demo stack.
 #
 # Week 5 added the first real service -- Redpanda (Kafka API), backing atlas.bus
-# (docs/design/05_communication.md). Week 6 adds the first control-plane services:
+# (docs/design/05_communication.md). Week 6 added the first control-plane services:
 # intersection_agent (one junction's decision loop, docs/design/04_agent_architecture.md
 # section 4.1) and watchdog (heartbeat staleness detection / fallback trigger, section
-# 4.1's failure-recovery pattern). Redis/Postgres are still later work; adding empty
-# stubs for those ahead of time would be scaffolding nothing depends on yet (the
+# 4.1's failure-recovery pattern). Week 7 adds corridor_coordinator (green-wave offset
+# hints + spillback alerts, section 4.2). Redis/Postgres are still later work; adding
+# empty stubs for those ahead of time would be scaffolding nothing depends on yet (the
 # repo-wide rule against speculative abstractions).
 #
 # NOTE: Docker is not installed on this project's primary dev machine (see the ATLAS
@@ -73,6 +74,24 @@ services:
       - --stale-after-s=10 # 2 missed 5s heartbeat cycles (docs/design/04_agent_architecture.md)
     ports:
       - "8001:8001"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    profiles: ["core", "full"]
+
+  corridor_coordinator:
+    build: .
+    container_name: atlas-corridor-coordinator
+    command:
+      - python
+      - -m
+      - atlas.services.corridor_coordinator
+      - --corridor-id=corridor_42430333_42430347 # the same 5-junction arterial Week 5 trains on
+      - --tls-ids=42430333,42430338,42430342,42430344,42430347
+      - --network=manhattan_midtown
+      - --kafka-brokers=redpanda:9092
+    ports:
+      - "8002:8002"
     depends_on:
       redpanda:
         condition: service_healthy

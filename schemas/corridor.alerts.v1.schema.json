@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/corridor.alerts.v1.schema.json",
+  "title": "atlas.corridor.alerts.v1",
+  "description": "Spillback alert from a Corridor Coordinator (docs/design/04_agent_architecture.md section 4.2: 'detect corridor-level spillback and request upstream metering'). NOTE: this topic is named in section 4.2's own text but is missing from docs/design/05_communication.md section 5.2's topic taxonomy table -- a real gap between the two design documents, not something this schema silently papers over; added here because the roadmap's Week 7 'Build' bullet explicitly asks for spillback alerts.",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "corridor_id", "intersection_id", "alert_type", "occupancy"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "corridor_id": { "type": "string", "minLength": 1 },
+    "intersection_id": { "type": "string", "minLength": 1 },
+    "alert_type": { "enum": ["spillback"] },
+    "occupancy": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}

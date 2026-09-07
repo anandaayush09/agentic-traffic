@@ -14,6 +14,15 @@ from atlas.cognitive.analyst import (
     run_counterfactual,
 )
 from atlas.cognitive.deterministic_mapper import map_incident_to_playbook
+from atlas.cognitive.incident_suite import (
+    SCRIPTED_INCIDENTS,
+    IncidentScore,
+    ScriptedIncident,
+    SuiteSummary,
+    is_grounded,
+    run_suite,
+    score_incident,
+)
 from atlas.cognitive.playbooks import (
     DEFAULT_PLAYBOOKS,
     BusBridgeParams,
@@ -67,4 +76,11 @@ __all__ = [
     "DecisionNotFoundError",
     "explain_decision",
     "run_counterfactual",
+    "SCRIPTED_INCIDENTS",
+    "IncidentScore",
+    "ScriptedIncident",
+    "SuiteSummary",
+    "is_grounded",
+    "run_suite",
+    "score_incident",
 ]

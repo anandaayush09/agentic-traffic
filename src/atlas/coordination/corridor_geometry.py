@@ -51,3 +51,25 @@ def _direct_edge(net: sumolib.net.Net, from_tls: str, to_tls: str) -> sumolib.ne
         if edge.getFromNode().getID() == from_tls and edge.getToNode().getID() == to_tls:
             return edge
     return None
+
+
+def compute_route_etas_s(
+    net_file: Path, route_edges: Sequence[str], speed_mps: float
+) -> list[float]:
+    """Cumulative arrival times (seconds from route start) at the END of each edge in
+    `route_edges`, given a constant travel speed -- the ETAs an emergency run's
+    `RouteStop`s need (`atlas.coordination.preemption`), reusing real edge lengths from
+    the built network exactly like `compute_corridor_segment_distances_m` does for
+    junction-to-junction distances. Returns `len(route_edges)` values (one ETA per edge
+    traversed, NOT including the route-start junction at time 0 -- the caller pairs
+    these with the junctions the route arrives AT, one per edge).
+    """
+    if speed_mps <= 0:
+        raise ValueError(f"speed_mps must be positive, got {speed_mps}")
+    net = sumolib.net.readNet(str(net_file))
+    etas: list[float] = []
+    cumulative_s = 0.0
+    for edge_id in route_edges:
+        cumulative_s += net.getEdge(edge_id).getLength() / speed_mps
+        etas.append(cumulative_s)
+    return etas

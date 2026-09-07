@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/forecast.link_state.v1.schema.json",
+  "title": "atlas.forecast.link_state.v1",
+  "description": "A multi-horizon quantile forecast for one link/junction (docs/design/05_communication.md section 5.2: '5 min' cadence; docs/design/06_ai_pipeline.md section 6.4's quantile heads p10/p50/p90), produced by GraphWaveNetForecaster (scripts/train_forecaster.py).",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "link_id", "forecasts"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "link_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The forecasted node's id -- an intersection_id in this project's current corridor-pressure forecasting scope, or a SUMO edge id for a future link-speed forecast."
+    },
+    "forecasts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["horizon_s", "p10", "p50", "p90"],
+        "additionalProperties": false,
+        "properties": {
+          "horizon_s": { "type": "number", "exclusiveMinimum": 0 },
+          "p10": { "type": "number" },
+          "p50": { "type": "number" },
+          "p90": { "type": "number" }
+        }
+      }
+    }
+  }
+}

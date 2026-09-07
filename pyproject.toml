@@ -38,6 +38,10 @@ dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.32,<1",
     "langgraph>=0.6,<1",
+    # PyJWT, not python-jose: HS256 needs nothing beyond stdlib hmac (no extra native
+    # crypto surface), and this project has hit enough native-DLL collisions on Windows
+    # already (see kafka-python's own comment above) to prefer the narrower dependency.
+    "pyjwt>=2.9,<3",
 ]
 
 [project.optional-dependencies]

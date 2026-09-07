@@ -1,6 +1,14 @@
 """FastAPI/async control-plane services (docs/design/09_repository_design.md's
 `services/`) -- Week 6's first real services: the Intersection Agent (one junction's
 decision loop) and the Watchdog (heartbeat staleness detection / fallback trigger).
+
+`atlas.services.cognitive_api` and `atlas.services.auth` (Week 10) are deliberately
+NOT re-exported here: `cognitive_api` imports `atlas.cognitive.supervisor`, and
+`atlas.cognitive.what_if` imports `atlas.services.decision` -- re-exporting
+`cognitive_api` from this package's `__init__` makes importing ANYTHING from
+`atlas.services` transitively import `atlas.cognitive` mid-initialization, a circular
+import (verified: this is the exact same class of bug as Week 4's Ray/`RolloutWorker`
+fix -- import `from atlas.services.cognitive_api import ...` directly instead).
 """
 
 from atlas.services.corridor_coordinator import (

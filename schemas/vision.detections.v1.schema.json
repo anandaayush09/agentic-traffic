@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schemas/vision.detections.v1.schema.json",
+  "title": "atlas.vision.detections.v1",
+  "description": "Per-camera detections and virtual-loop counts for one reporting interval (docs/design/05_communication.md section 5.2: 'per-frame batch'; docs/design/06_ai_pipeline.md section 6.3's virtual-loop counting). loop_counts carries the same count/occupancy semantics as sensor.detections.v1's induction-loop lanes, so downstream consumers (state writer, telemetry) don't need to know whether a signal came from a physical loop or a camera.",
+  "type": "object",
+  "required": ["msg_id", "ts", "schema_version", "camera_id", "detections", "loop_counts"],
+  "additionalProperties": false,
+  "properties": {
+    "msg_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1" },
+    "trace_id": { "type": "string" },
+    "camera_id": { "type": "string", "minLength": 1 },
+    "detections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["track_id", "class", "bbox", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "track_id": { "type": "string", "minLength": 1 },
+          "class": { "enum": ["car", "bus", "truck", "van", "other"] },
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "[x1, y1, x2, y2] in image pixel coordinates"
+          },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "loop_counts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["loop_id", "count", "occupancy"],
+        "additionalProperties": false,
+        "properties": {
+          "loop_id": { "type": "string", "minLength": 1 },
+          "count": { "type": "integer", "minimum": 0 },
+          "occupancy": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}

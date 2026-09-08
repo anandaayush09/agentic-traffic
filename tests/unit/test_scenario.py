@@ -111,7 +111,7 @@ class TestScenarioSpecValidation:
 
 
 class TestScenarioConfigLoading:
-    def test_loads_all_four_scenarios(self) -> None:
+    def test_loads_all_eight_scenarios(self) -> None:
         config = load_yaml_model(SCENARIO_CONFIG_PATH, ScenarioSet)
 
         names = {s.name for s in config.scenarios}
@@ -120,6 +120,10 @@ class TestScenarioConfigLoading:
             "avenue_closure",
             "lane_drop_construction",
             "regional_weather",
+            "severe_accident",
+            "crossstreet_closure",
+            "heavy_construction",
+            "severe_weather",
         }
 
 
@@ -254,6 +258,120 @@ class TestScenarioControllerLifecycle:
             assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
                 original_speeds[lid]
             )
+
+    def test_second_variant_per_class_applies_and_reverts_correctly(
+        self, scenario_env: SumoTwinEnv
+    ) -> None:
+        """The Week 11 close-out second variant per class (severe_accident,
+        crossstreet_closure, heavy_construction, severe_weather) -- a different
+        corridor segment AND a different severity than the original four, run
+        together through one real episode so each one's own apply/revert is checked
+        independently at its own [start_s, start_s+duration_s) window, the same way
+        the design's real multi-scenario suite would exercise them.
+        """
+        config = load_yaml_model(SCENARIO_CONFIG_PATH, ScenarioSet)
+        second_variants = {
+            "severe_accident": next(s for s in config.scenarios if s.name == "severe_accident"),
+            "crossstreet_closure": next(
+                s for s in config.scenarios if s.name == "crossstreet_closure"
+            ),
+            "heavy_construction": next(
+                s for s in config.scenarios if s.name == "heavy_construction"
+            ),
+            "severe_weather": next(s for s in config.scenarios if s.name == "severe_weather"),
+        }
+        controller = ScenarioController(scenario_env, list(second_variants.values()))
+
+        accident = second_variants["severe_accident"]
+        accident_lanes = _lane_ids(scenario_env, accident.edge_id)
+        accident_original_speeds = {
+            lid: scenario_env.connection.lane.getMaxSpeed(lid) for lid in accident_lanes
+        }
+
+        closure = second_variants["crossstreet_closure"]
+        closure_lanes = _lane_ids(scenario_env, closure.edge_id)
+        closure_original_allowed = {
+            lid: tuple(scenario_env.connection.lane.getAllowed(lid)) for lid in closure_lanes
+        }
+
+        construction = second_variants["heavy_construction"]
+        assert construction.lane_indices is not None
+        construction_dropped = {f"{construction.edge_id}_{i}" for i in construction.lane_indices}
+        construction_remaining = [
+            lid for lid in _lane_ids(scenario_env, construction.edge_id)
+            if lid not in construction_dropped
+        ]
+        assert construction_remaining, "heavy_construction must leave at least one open lane"
+        construction_original_speeds = {
+            lid: scenario_env.connection.lane.getMaxSpeed(lid) for lid in construction_remaining
+        }
+
+        weather = second_variants["severe_weather"]
+        weather_edges = [weather.edge_id, *weather.area_edge_ids]
+        weather_lanes_by_edge = {e: _lane_ids(scenario_env, e) for e in weather_edges}
+        weather_original_speeds = {
+            lid: scenario_env.connection.lane.getMaxSpeed(lid)
+            for lanes in weather_lanes_by_edge.values()
+            for lid in lanes
+        }
+
+        # Advance through every window in one pass, checking each scenario is active
+        # only during its own window and fully reverted immediately after.
+        controller.step(n=accident.start_s + 2)
+        assert "severe_accident" in controller.active_scenario_names
+        for lid in accident_lanes:
+            assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                accident_original_speeds[lid] * accident.speed_factor
+            )
+
+        controller.step(n=accident.duration_s)
+        assert "severe_accident" not in controller.active_scenario_names
+        for lid in accident_lanes:
+            assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                accident_original_speeds[lid]
+            )
+
+        controller.step(n=int(closure.start_s - scenario_env.sim_time) + 2)
+        assert "crossstreet_closure" in controller.active_scenario_names
+        for lid in closure_lanes:
+            assert scenario_env.connection.lane.getAllowed(lid) == ()
+
+        controller.step(n=closure.duration_s)
+        assert "crossstreet_closure" not in controller.active_scenario_names
+        for lid in closure_lanes:
+            assert scenario_env.connection.lane.getAllowed(lid) == closure_original_allowed[lid]
+
+        controller.step(n=int(construction.start_s - scenario_env.sim_time) + 2)
+        assert "heavy_construction" in controller.active_scenario_names
+        for lid in construction_dropped:
+            assert scenario_env.connection.lane.getAllowed(lid) == ()
+        for lid in construction_remaining:
+            assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                construction_original_speeds[lid] * construction.speed_factor
+            )
+
+        controller.step(n=construction.duration_s)
+        assert "heavy_construction" not in controller.active_scenario_names
+        for lid in construction_remaining:
+            assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                construction_original_speeds[lid]
+            )
+
+        controller.step(n=int(weather.start_s - scenario_env.sim_time) + 2)
+        assert "severe_weather" in controller.active_scenario_names
+        for lanes in weather_lanes_by_edge.values():
+            for lid in lanes:
+                assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                    weather_original_speeds[lid] * weather.speed_factor
+                )
+
+        controller.step(n=weather.duration_s)
+        assert "severe_weather" not in controller.active_scenario_names
+        for lanes in weather_lanes_by_edge.values():
+            for lid in lanes:
+                assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                    weather_original_speeds[lid]
+                )
 
     def test_weather_derates_every_area_edge_at_once(self, scenario_env: SumoTwinEnv) -> None:
         config = load_yaml_model(SCENARIO_CONFIG_PATH, ScenarioSet)

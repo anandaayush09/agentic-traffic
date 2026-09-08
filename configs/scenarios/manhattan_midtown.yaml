@@ -7,6 +7,13 @@
 # lanes, 1320232776#0 has 3 -- chosen so each scenario exercises blocking/degrading every
 # lane of an edge, not just a trivial single-lane case. Time windows are sequential and
 # non-overlapping so each scenario's before/during/after assertions stay independent.
+#
+# Second variant per class (added when closing out Week 11's honest remaining-scope
+# note: originally 1 variant per class, design wants >=3 -- these are a real second
+# data point per class, not yet the full >=3, on a different corridor segment
+# (127693103#0/#3, 464516471#0/#3 -- the 42430333-42430338-42430342-42430344-42430347
+# TLS corridor itself, verified 4 lanes each) so severity AND location both vary, not
+# just severity on the same two edges.
 network: manhattan_midtown
 scenarios:
   - name: midblock_accident
@@ -34,3 +41,28 @@ scenarios:
     start_s: 1500
     duration_s: 300
     speed_factor: 0.6
+  - name: severe_accident
+    type: accident
+    edge_id: "127693103#0"
+    start_s: 1800
+    duration_s: 300
+    speed_factor: 0.1
+  - name: crossstreet_closure
+    type: closure
+    edge_id: "127693103#3"
+    start_s: 2100
+    duration_s: 300
+  - name: heavy_construction
+    type: construction
+    edge_id: "464516471#0"
+    start_s: 2400
+    duration_s: 300
+    speed_factor: 0.4
+    lane_indices: [0, 1, 2]
+  - name: severe_weather
+    type: weather
+    edge_id: "464516471#3"
+    area_edge_ids: ["127693103#0", "127693103#3"]
+    start_s: 2700
+    duration_s: 300
+    speed_factor: 0.35

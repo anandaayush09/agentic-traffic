@@ -45,13 +45,82 @@ class TestScenarioSpecValidation:
 
         assert spec.speed_factor == 0.3
 
+    def test_construction_requires_speed_factor(self) -> None:
+        with pytest.raises(ValidationError, match="speed_factor is required"):
+            ScenarioSpec(
+                name="x",
+                type="construction",
+                edge_id="e1",
+                start_s=0,
+                duration_s=10,
+                lane_indices=[0],
+            )
+
+    def test_construction_requires_nonempty_lane_indices(self) -> None:
+        with pytest.raises(ValidationError, match="lane_indices is required"):
+            ScenarioSpec(
+                name="x",
+                type="construction",
+                edge_id="e1",
+                start_s=0,
+                duration_s=10,
+                speed_factor=0.5,
+            )
+
+    def test_valid_construction_spec(self) -> None:
+        spec = ScenarioSpec(
+            name="x",
+            type="construction",
+            edge_id="e1",
+            start_s=0,
+            duration_s=10,
+            speed_factor=0.7,
+            lane_indices=[0, 1],
+        )
+
+        assert spec.lane_indices == [0, 1]
+
+    def test_weather_requires_speed_factor(self) -> None:
+        with pytest.raises(ValidationError, match="speed_factor is required"):
+            ScenarioSpec(name="x", type="weather", edge_id="e1", start_s=0, duration_s=10)
+
+    def test_weather_forbids_lane_indices(self) -> None:
+        with pytest.raises(ValidationError, match="lane_indices must not be set"):
+            ScenarioSpec(
+                name="x",
+                type="weather",
+                edge_id="e1",
+                start_s=0,
+                duration_s=10,
+                speed_factor=0.6,
+                lane_indices=[0],
+            )
+
+    def test_valid_weather_spec_with_area_edges(self) -> None:
+        spec = ScenarioSpec(
+            name="x",
+            type="weather",
+            edge_id="e1",
+            area_edge_ids=["e2", "e3"],
+            start_s=0,
+            duration_s=10,
+            speed_factor=0.6,
+        )
+
+        assert spec.area_edge_ids == ["e2", "e3"]
+
 
 class TestScenarioConfigLoading:
-    def test_loads_two_scenarios(self) -> None:
+    def test_loads_all_four_scenarios(self) -> None:
         config = load_yaml_model(SCENARIO_CONFIG_PATH, ScenarioSet)
 
         names = {s.name for s in config.scenarios}
-        assert names == {"midblock_accident", "avenue_closure"}
+        assert names == {
+            "midblock_accident",
+            "avenue_closure",
+            "lane_drop_construction",
+            "regional_weather",
+        }
 
 
 @pytest.fixture(scope="session")
@@ -146,3 +215,74 @@ class TestScenarioControllerLifecycle:
         assert "avenue_closure" not in controller.active_scenario_names
         for lid in lanes:
             assert scenario_env.connection.lane.getAllowed(lid) == original_allowed[lid]
+
+    def test_construction_drops_only_its_own_lanes_and_derates_the_rest(
+        self, scenario_env: SumoTwinEnv
+    ) -> None:
+        config = load_yaml_model(SCENARIO_CONFIG_PATH, ScenarioSet)
+        construction = next(s for s in config.scenarios if s.name == "lane_drop_construction")
+        assert construction.lane_indices is not None
+        controller = ScenarioController(scenario_env, [construction])
+        lanes = _lane_ids(scenario_env, construction.edge_id)
+        dropped_lanes = {f"{construction.edge_id}_{i}" for i in construction.lane_indices}
+        remaining_lanes = [lid for lid in lanes if lid not in dropped_lanes]
+        assert remaining_lanes, "test needs at least one non-dropped lane to be meaningful"
+        original_allowed = {
+            lid: tuple(scenario_env.connection.lane.getAllowed(lid)) for lid in dropped_lanes
+        }
+        original_speeds = {
+            lid: scenario_env.connection.lane.getMaxSpeed(lid) for lid in remaining_lanes
+        }
+
+        controller.step(n=construction.start_s - 1)
+        assert "lane_drop_construction" not in controller.active_scenario_names
+
+        controller.step(n=2)
+        assert "lane_drop_construction" in controller.active_scenario_names
+        for lid in dropped_lanes:
+            assert scenario_env.connection.lane.getAllowed(lid) == ()  # fully blocked
+        for lid in remaining_lanes:
+            assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                original_speeds[lid] * construction.speed_factor
+            )
+
+        controller.step(n=construction.duration_s)
+        assert "lane_drop_construction" not in controller.active_scenario_names
+        for lid in dropped_lanes:
+            assert scenario_env.connection.lane.getAllowed(lid) == original_allowed[lid]
+        for lid in remaining_lanes:
+            assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                original_speeds[lid]
+            )
+
+    def test_weather_derates_every_area_edge_at_once(self, scenario_env: SumoTwinEnv) -> None:
+        config = load_yaml_model(SCENARIO_CONFIG_PATH, ScenarioSet)
+        weather = next(s for s in config.scenarios if s.name == "regional_weather")
+        controller = ScenarioController(scenario_env, [weather])
+        all_edges = [weather.edge_id, *weather.area_edge_ids]
+        assert len(all_edges) > 1, "test needs a real multi-edge area to be meaningful"
+        lanes_by_edge = {edge_id: _lane_ids(scenario_env, edge_id) for edge_id in all_edges}
+        original_speeds = {
+            lid: scenario_env.connection.lane.getMaxSpeed(lid)
+            for lanes in lanes_by_edge.values()
+            for lid in lanes
+        }
+
+        controller.step(n=weather.start_s - 1)
+        assert "regional_weather" not in controller.active_scenario_names
+
+        controller.step(n=2)
+        assert "regional_weather" in controller.active_scenario_names
+        for lanes in lanes_by_edge.values():
+            for lid in lanes:
+                assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                    original_speeds[lid] * weather.speed_factor
+                )
+
+        controller.step(n=weather.duration_s)
+        assert "regional_weather" not in controller.active_scenario_names
+        for lanes in lanes_by_edge.values():
+            for lid in lanes:
+                assert scenario_env.connection.lane.getMaxSpeed(lid) == pytest.approx(
+                    original_speeds[lid]
+                )

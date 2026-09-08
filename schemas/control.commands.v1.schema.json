@@ -13,7 +13,7 @@
     "trace_id": { "type": "string" },
     "intersection_id": { "type": "string", "minLength": 1 },
     "actor": {
-      "enum": ["rl_agent", "max_pressure", "fixed_time", "preemption", "operator"]
+      "enum": ["rl_agent", "max_pressure", "fixed_time", "actuated", "preemption", "operator"]
     },
     "action": {
       "type": "object",

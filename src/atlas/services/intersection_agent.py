@@ -116,6 +116,7 @@ class IntersectionAgentService:
 
         self._obs: np.ndarray | None = None
         self._last_action = 0
+        self._elapsed_in_phase_s = 0.0
         self._last_heartbeat: datetime | None = None
         self._running = False
 
@@ -134,7 +135,7 @@ class IntersectionAgentService:
         for callers/tests that want to inspect what happened.
         """
         queue_lengths = None
-        if self.mode == "max_pressure":
+        if self.mode in ("max_pressure", "actuated"):
             conn = self._env.connection
             queue_lengths = {
                 lane_id: int(conn.lane.getLastStepHaltingNumber(lane_id))
@@ -152,7 +153,16 @@ class IntersectionAgentService:
             net=self._net,
             obs=obs_tensor,
             last_action=self._last_action,
+            elapsed_in_phase_s=self._elapsed_in_phase_s if self.mode == "actuated" else None,
         )
+        # Tracks how long the CURRENT action has been held, purely from the
+        # decision-interval cadence (this service's own clock, not the twin's) --
+        # only "actuated" mode's gap-based extension needs it, but it costs nothing
+        # to maintain unconditionally.
+        if action == self._last_action:
+            self._elapsed_in_phase_s += self.config.decision_interval_s
+        else:
+            self._elapsed_in_phase_s = self.config.decision_interval_s
         self._last_action = action
 
         observations, _, _, _, infos = self._env.step({self.config.tls_id: action})
@@ -284,7 +294,9 @@ def main() -> None:
     parser.add_argument("--max-green-phases", type=int, default=2)
     parser.add_argument("--decision-interval-s", type=float, default=5.0)
     parser.add_argument(
-        "--mode", default="max_pressure", choices=["rl", "max_pressure", "fixed_time", "off"]
+        "--mode",
+        default="max_pressure",
+        choices=["rl", "max_pressure", "fixed_time", "actuated", "off"],
     )
     parser.add_argument("--model-path", default=None)
     parser.add_argument(

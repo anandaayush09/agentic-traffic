@@ -24,8 +24,15 @@ def _program() -> MaxPressureProgram:
 
 class TestActorNameForMode:
     def test_maps_every_mode_to_a_valid_control_commands_actor(self) -> None:
-        valid_actors = {"rl_agent", "max_pressure", "fixed_time", "preemption", "operator"}
-        for mode in ("rl", "max_pressure", "fixed_time", "off"):
+        valid_actors = {
+            "rl_agent",
+            "max_pressure",
+            "fixed_time",
+            "actuated",
+            "preemption",
+            "operator",
+        }
+        for mode in ("rl", "max_pressure", "fixed_time", "actuated", "off"):
             assert actor_name_for_mode(mode) in valid_actors  # type: ignore[arg-type]
 
 
@@ -76,6 +83,41 @@ class TestFixedTimeMode:
             last_action=0,
         )
         assert program.green_phase_indices[action_after_first_phase] == green_phase_indices[1]
+
+
+class TestActuatedMode:
+    def test_extends_the_current_phase_when_a_vehicle_is_present(self) -> None:
+        program = _program()
+        phase_0_movements = program.enabled_movements(program.green_phase_indices[0])
+        queue_lengths = {m.from_lane: 1 for m in phase_0_movements}
+
+        action = select_action_for_mode(
+            "actuated",
+            program,
+            queue_lengths=queue_lengths,
+            elapsed_in_phase_s=15.0,
+            last_action=0,
+        )
+
+        assert program.green_phase_indices[action] == program.green_phase_indices[0]
+
+    def test_advances_to_the_next_phase_on_a_gap(self) -> None:
+        program = _program()
+
+        action = select_action_for_mode(
+            "actuated",
+            program,
+            queue_lengths={},  # no vehicles anywhere -- a real gap
+            elapsed_in_phase_s=15.0,
+            last_action=0,
+        )
+
+        assert program.green_phase_indices[action] == program.green_phase_indices[1]
+
+    def test_raises_without_queue_lengths_or_elapsed_in_phase_s(self) -> None:
+        program = _program()
+        with pytest.raises(ValueError, match="elapsed_in_phase_s"):
+            select_action_for_mode("actuated", program, queue_lengths={}, last_action=0)
 
 
 class TestRlMode:

@@ -179,32 +179,52 @@ class IntersectionAgentService:
     def _publish_command(self, phase_id: int, info: dict[str, Any]) -> None:
         if self._bus is None:
             return
-        self._bus.publish(
-            "control.commands.v1",
-            {
-                "intersection_id": self.config.tls_id,
-                "actor": actor_name_for_mode(self.mode),
-                "action": {"kind": "set_phase", "phase_id": phase_id},
-                "shield": {
-                    "modified": bool(info["shield_modified"]),
-                    "reason": info["shield_reason"],
+        try:
+            self._bus.publish(
+                "control.commands.v1",
+                {
+                    "intersection_id": self.config.tls_id,
+                    "actor": actor_name_for_mode(self.mode),
+                    "action": {"kind": "set_phase", "phase_id": phase_id},
+                    "shield": {
+                        "modified": bool(info["shield_modified"]),
+                        "reason": info["shield_reason"],
+                    },
+                    "policy_version": "mappo_v1" if self.mode == "rl" else "n/a",
                 },
-                "policy_version": "mappo_v1" if self.mode == "rl" else "n/a",
-            },
-        )
+            )
+        except Exception as exc:  # noqa: BLE001 -- deliberately broad: publishing is
+            # best-effort, not load-bearing for the decision itself (see
+            # test_works_without_a_bus_producer's own docstring) -- a bus partition
+            # must never crash the control loop that already picked a real, safe
+            # action and is about to step the twin regardless. Caught here, not
+            # narrower, because the failure mode of an unreachable/partitioned
+            # broker isn't something this service can enumerate in advance (a
+            # network partition, a full producer buffer, a broker-side rejection --
+            # all equally "not this service's problem to solve," all equally must
+            # not crash it).
+            logger.warning(
+                "intersection_agent.publish_failed", topic="control.commands.v1", error=str(exc)
+            )
 
     def _publish_heartbeat(self, info: dict[str, Any]) -> None:
         self._last_heartbeat = datetime.now(UTC)
         if self._bus is None:
             return
-        self._bus.publish(
-            "system.health.v1",
-            {
-                "service_id": self._service_id,
-                "status": "ok",
-                "detail": {"mode": self.mode, "pressure": info["pressure"]},
-            },
-        )
+        try:
+            self._bus.publish(
+                "system.health.v1",
+                {
+                    "service_id": self._service_id,
+                    "status": "ok",
+                    "detail": {"mode": self.mode, "pressure": info["pressure"]},
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 -- same best-effort reasoning as
+            # _publish_command above.
+            logger.warning(
+                "intersection_agent.publish_failed", topic="system.health.v1", error=str(exc)
+            )
 
     async def run_forever(self) -> None:
         self.start()

@@ -40,6 +40,18 @@ class _FakeRawProducer:
         pass
 
 
+@dataclass
+class _FailingRawProducer:
+    """Simulates a partitioned/unreachable broker: every send() raises, the way a
+    real kafka-python producer eventually surfaces a connection failure."""
+
+    def send(self, topic: str, value: bytes | None = None, key: bytes | None = None) -> object:
+        raise ConnectionError("simulated bus partition -- broker unreachable")
+
+    def flush(self, timeout: float | None = None) -> None:
+        pass
+
+
 def _make_config() -> IntersectionAgentConfig:
     return IntersectionAgentConfig(
         tls_id=TLS_ID,
@@ -97,6 +109,26 @@ class TestDecideAndStep:
             info = service.decide_and_step()
         finally:
             service.stop()
+        assert "pressure" in info
+
+    def test_survives_a_bus_partition_mid_run(self) -> None:
+        """docs/design/11_evaluation.md section 11.5.4's chaos scenario: 'partition
+        the bus for area X (fallback correctness)'. A bus_producer that EXISTS but
+        whose publish() calls fail (a real partition, not a never-configured bus)
+        must not crash decide_and_step() -- caught for real: before this test's own
+        fix, a raising publish() propagated straight out of decide_and_step() and
+        killed the whole control loop, directly contradicting this project's own
+        stated 'best-effort, not load-bearing' principle for the bus-less case above.
+        """
+        bus = BusProducer(_FailingRawProducer(), SchemaRegistry())
+        service = IntersectionAgentService(_make_config(), bus_producer=bus)
+        service.start()
+        try:
+            info = service.decide_and_step()  # must not raise
+        finally:
+            service.stop()
+
+        assert "pressure" in info  # the control decision itself still happened
         assert "pressure" in info
 
 

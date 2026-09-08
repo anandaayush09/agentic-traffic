@@ -42,6 +42,11 @@ dependencies = [
     # crypto surface), and this project has hit enough native-DLL collisions on Windows
     # already (see kafka-python's own comment above) to prefer the narrower dependency.
     "pyjwt>=2.9,<3",
+    # Was only a transitive dependency (via scikit-learn/mlflow) until Week 11's
+    # atlas.evaluation package started importing scipy.stats directly for the
+    # statistical protocol (docs/design/11_evaluation.md section 11.3: Welch's
+    # t-test, t-distribution confidence intervals).
+    "scipy>=1.14,<2",
 ]
 
 [project.optional-dependencies]

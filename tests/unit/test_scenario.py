@@ -298,7 +298,8 @@ class TestScenarioControllerLifecycle:
         assert construction.lane_indices is not None
         construction_dropped = {f"{construction.edge_id}_{i}" for i in construction.lane_indices}
         construction_remaining = [
-            lid for lid in _lane_ids(scenario_env, construction.edge_id)
+            lid
+            for lid in _lane_ids(scenario_env, construction.edge_id)
             if lid not in construction_dropped
         ]
         assert construction_remaining, "heavy_construction must leave at least one open lane"

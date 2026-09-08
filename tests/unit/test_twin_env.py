@@ -12,6 +12,7 @@ test's setup, keeping tests independent despite that shared module state.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -151,3 +152,32 @@ class TestSumoTwinEnvState:
         assert twin_env.sim_time == pytest.approx(1000 * twin_env.config.step_length_s)
         states = twin_env.get_all_junction_states()
         assert len(states) == len(twin_env.config.traffic_light_ids)
+
+
+class TestTripinfoOutput:
+    def test_writes_a_real_parseable_tripinfo_file(
+        self, sandbox_twin_config: TwinEnvConfig, tmp_path: Path
+    ) -> None:
+        """Week 11's evaluation harness reads this file for real -- verifying SUMO
+        actually writes it (and that it's parseable) here, separate from
+        atlas.evaluation.metrics's own tests against a hand-written fixture, so a
+        wiring mistake in TwinEnvConfig/SumoTwinEnv can't hide behind that fixture
+        always looking right.
+        """
+        from atlas.evaluation.metrics import parse_tripinfo
+
+        output_path = tmp_path / "tripinfo.xml"
+        config = sandbox_twin_config.model_copy(
+            update={"name": "tripinfo_test", "tripinfo_output": output_path}
+        )
+        env = SumoTwinEnv(config)
+        env.reset()
+        try:
+            env.step(n=200)
+        finally:
+            env.close()
+
+        assert output_path.is_file()
+        trips = parse_tripinfo(output_path)
+        assert len(trips) > 0
+        assert any(t.completed for t in trips)

@@ -3,6 +3,14 @@
 evaluation report (Week 11, docs/design/13_roadmap.md).
 """
 
+from atlas.evaluation.metrics import (
+    QueueSampler,
+    TrafficMetrics,
+    TripRecord,
+    compute_traffic_metrics,
+    parse_tripinfo,
+)
+from atlas.evaluation.runner import run_scenario_cell
 from atlas.evaluation.statistics import (
     ComparisonResult,
     ConfidenceInterval,
@@ -21,4 +29,10 @@ __all__ = [
     "holm_bonferroni",
     "ComparisonResult",
     "compare_two_controllers",
+    "TripRecord",
+    "TrafficMetrics",
+    "QueueSampler",
+    "parse_tripinfo",
+    "compute_traffic_metrics",
+    "run_scenario_cell",
 ]

@@ -123,6 +123,17 @@ class ScenarioController:
             self._env.step()
             self._sync()
 
+    def sync(self) -> None:
+        """Applies/reverts scenarios for the CURRENT sim time without stepping the
+        twin itself -- for callers that already advance a different env type this
+        controller doesn't step directly (Week 11's evaluation runner drives a
+        `MultiAgentSignalEnv`, whose `step(actions)` needs per-junction actions this
+        controller has no business choosing). Call this once per real simulation step
+        already taken elsewhere; `step()` above remains the right choice for anything
+        that owns a plain `SumoTwinEnv` directly.
+        """
+        self._sync()
+
     def _sync(self) -> None:
         t = self._env.sim_time
         for spec in self._specs:

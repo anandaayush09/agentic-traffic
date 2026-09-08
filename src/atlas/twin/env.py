@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,21 @@ from atlas.common.sumo_locate import get_binary_path, get_sumo_home
 logger = get_logger(__name__)
 
 TwinBackend = Literal["libsumo", "traci"]
+
+
+class TwinLike(Protocol):
+    """The minimal `.connection`/`.sim_time` surface both `SumoTwinEnv` and
+    `MultiAgentSignalEnv` expose -- shared here (not duplicated per-module) after the
+    second module (Week 11's `ScenarioController.sync`, following
+    `atlas.twin.emergency.EmergencyVehicleInjector`'s original private copy) needed
+    the exact same shape: a real "third module would just copy-paste this again"
+    signal, the same reasoning `atlas.control.phases` was extracted from in Week 3.
+    """
+
+    @property
+    def connection(self) -> Any: ...
+    @property
+    def sim_time(self) -> float: ...
 
 
 class TwinEnvConfig(BaseModel):
@@ -49,6 +64,13 @@ class TwinEnvConfig(BaseModel):
     around the blockage instead of raising a fatal error. Off by default: it changes
     vehicle behavior (and therefore any measured traffic statistics), so it should only be
     on when a run actually needs dynamic rerouting -- e.g. scenario-engine closures."""
+    tripinfo_output: Path | None = None
+    """Where SUMO writes its own per-vehicle tripinfo XML (duration, waitingTime,
+    timeLoss, etc. per completed trip) -- the source of truth
+    `atlas.evaluation.metrics.parse_tripinfo` reads (Week 11's evaluation harness).
+    None (the default) disables it: every other use of this twin so far (training,
+    live control, scenario tests) has no use for per-trip output and it costs real
+    disk I/O to write, so it's opt-in, not on by default."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +168,17 @@ class SumoTwinEnv:
         ]
         for extra in self._config.additional_files:
             cmd += ["--additional-files", str(extra)]
+        if self._config.tripinfo_output is not None:
+            cmd += [
+                "--tripinfo-output",
+                str(self._config.tripinfo_output),
+                # Includes vehicles still en route when the episode ends -- silently
+                # excluding them would bias mean waiting/travel time toward only the
+                # trips fast enough to finish, exactly backwards from what an
+                # evaluation should measure.
+                "--tripinfo-output.write-unfinished",
+                "true",
+            ]
         if self._config.enable_rerouting:
             cmd += ["--device.rerouting.probability", "1.0", "--device.rerouting.period", "30"]
 

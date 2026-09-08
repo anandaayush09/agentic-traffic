@@ -12,28 +12,23 @@ start_s + duration_s) apply/revert window. An emergency run needs an ORDERED ROU
 (multiple edges) and departs exactly once -- different enough shape that sharing one
 model would force fields onto both that only one of them needs.
 
-`EmergencyVehicleInjector` takes anything satisfying `_TwinLike` (a `.connection` +
-`.sim_time` Protocol) structurally, not a concrete `SumoTwinEnv` -- both `SumoTwinEnv`
-and `MultiAgentSignalEnv` already expose exactly this pair of properties, so the same
-injector works whether the caller is stepping a bare twin or a full multi-agent RL env.
+`EmergencyVehicleInjector` takes anything satisfying `atlas.twin.env.TwinLike` (a
+`.connection` + `.sim_time` Protocol) structurally, not a concrete `SumoTwinEnv` --
+both `SumoTwinEnv` and `MultiAgentSignalEnv` already expose exactly this pair of
+properties, so the same injector works whether the caller is stepping a bare twin or
+a full multi-agent RL env. (Week 11: `atlas.twin.scenario.ScenarioController.sync`
+needed the exact same Protocol a second time, so it moved to `atlas.twin.env` as a
+shared public type instead of staying a private copy here.)
 """
 
 from __future__ import annotations
 
-from typing import Any, Protocol
-
 from pydantic import BaseModel, Field
 
 from atlas.common.logging import get_logger
+from atlas.twin.env import TwinLike
 
 logger = get_logger(__name__)
-
-
-class _TwinLike(Protocol):
-    @property
-    def connection(self) -> Any: ...
-    @property
-    def sim_time(self) -> float: ...
 
 
 class EmergencyVehicleSpec(BaseModel):
@@ -47,7 +42,7 @@ class EmergencyVehicleSpec(BaseModel):
 class EmergencyVehicleInjector:
     """Watches sim_time and injects `spec`'s vehicle exactly once, at `depart_s`."""
 
-    def __init__(self, twin: _TwinLike, spec: EmergencyVehicleSpec) -> None:
+    def __init__(self, twin: TwinLike, spec: EmergencyVehicleSpec) -> None:
         self._twin = twin
         self._spec = spec
         self._injected = False

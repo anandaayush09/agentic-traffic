@@ -19,6 +19,7 @@ missing net/obs, not a silent no-op.
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 from atlas.control.actuated import ActuatedConfig
@@ -35,6 +36,7 @@ from atlas.rl.multi_agent_env import MultiAgentSignalEnv, MultiAgentSignalEnvCon
 from atlas.services.decision import AgentMode, select_action_for_mode
 from atlas.twin.env import TwinEnvConfig
 from atlas.twin.scenario import ScenarioController, ScenarioSpec
+from atlas.twin.sensor_fault import SensorFaultModel
 
 
 def run_scenario_cell(
@@ -50,13 +52,25 @@ def run_scenario_cell(
     additional_files: list[Path] | None = None,
     max_lanes: int = 10,
     max_green_phases: int = 2,
+    detector_dropout_rate: float = 0.0,
 ) -> TrafficMetrics:
     """Runs `num_decisions` decision cycles (each `decision_interval_s` real
     simulation seconds) of `mode` controlling every junction in `tls_ids` at once,
     with `scenario_specs` (if any) applying/reverting on their own configured
     schedule throughout. Returns the real, measured `TrafficMetrics` for the whole
     episode (docs/design/11_evaluation.md section 11.2).
+
+    `detector_dropout_rate` (docs/design/11_evaluation.md section 11.5's detector-
+    dropout robustness sweep): applies `SensorFaultModel` to every controller's
+    `queue_lengths` reading before it's used for a decision -- `fixed_time` is
+    unaffected by construction (it never reads queue_lengths at all), which is
+    itself the honest, expected result for that mode, not a bug in the sweep.
     """
+    fault_model = (
+        SensorFaultModel(dropout_rate=detector_dropout_rate, rng=random.Random(seed))
+        if detector_dropout_rate > 0.0
+        else None
+    )
     programs = {tls_id: MaxPressureProgram.from_net_file(tls_id, net_file) for tls_id in tls_ids}
     native_durations = {
         tls_id: native_green_durations_from_net_file(tls_id, net_file) for tls_id in tls_ids
@@ -110,12 +124,17 @@ def run_scenario_cell(
                 queue_lengths = {
                     lane_id: int(conn.lane.getLastStepHaltingNumber(lane_id)) for lane_id in lanes
                 }
-                queue_sampler.sample(conn, list(lanes))
+                queue_sampler.sample(conn, list(lanes))  # the real, un-faulted ground
+                # truth -- this measures actual network state, not what a degraded
+                # controller believes; only the decision below sees the fault.
+                controller_queue_lengths = (
+                    fault_model.apply(queue_lengths) if fault_model is not None else queue_lengths
+                )
 
                 action = select_action_for_mode(
                     mode,
                     program,
-                    queue_lengths=queue_lengths,
+                    queue_lengths=controller_queue_lengths,
                     native_durations=native_durations[tls_id],
                     sim_time=env.sim_time if mode == "fixed_time" else None,
                     last_action=last_actions[tls_id],

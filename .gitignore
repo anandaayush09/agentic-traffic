@@ -31,6 +31,7 @@ data/networks/manhattan_midtown/*
 # the pilot report's own claims table is the artifact that matters, not the raw XML
 # every metric in it was computed from).
 data/eval_pilot_tripinfo/
+data/robustness_sweep_tripinfo/
 
 # MLflow / experiment artifacts
 mlruns/

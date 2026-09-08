@@ -89,6 +89,69 @@ class TestRunScenarioCell:
 
         assert with_closure != without_scenario
 
+    def test_detector_dropout_is_actually_wired_into_the_decision_loop(
+        self, tmp_path: Path
+    ) -> None:
+        """Full (100%) detector dropout for a queue-sensitive controller
+        (max_pressure) must change its decisions vs. no dropout -- proving
+        detector_dropout_rate is genuinely applied, not accepted and ignored."""
+        kwargs = dict(
+            mode="max_pressure",
+            tls_ids=["B1"],
+            net_file=NET_FILE,
+            route_file=ROUTE_FILE,
+            seed=42,
+            num_decisions=20,
+        )
+        without_dropout = run_scenario_cell(tripinfo_output=tmp_path / "no_dropout.xml", **kwargs)
+        with_full_dropout = run_scenario_cell(
+            tripinfo_output=tmp_path / "full_dropout.xml",
+            detector_dropout_rate=1.0,
+            **kwargs,
+        )
+
+        assert with_full_dropout != without_dropout
+
+    def test_zero_dropout_rate_is_a_true_no_op(self, tmp_path: Path) -> None:
+        kwargs = dict(
+            mode="max_pressure",
+            tls_ids=["B1"],
+            net_file=NET_FILE,
+            route_file=ROUTE_FILE,
+            seed=42,
+            num_decisions=20,
+        )
+        explicit_zero = run_scenario_cell(
+            tripinfo_output=tmp_path / "explicit_zero.xml",
+            detector_dropout_rate=0.0,
+            **kwargs,
+        )
+        default = run_scenario_cell(tripinfo_output=tmp_path / "default.xml", **kwargs)
+
+        assert explicit_zero == default
+
+    def test_fixed_time_is_unaffected_by_detector_dropout(self, tmp_path: Path) -> None:
+        """fixed_time never reads queue_lengths at all -- this is the honest,
+        expected result of the robustness sweep for that mode, not a bug."""
+        kwargs = dict(
+            mode="fixed_time",
+            tls_ids=["B1"],
+            net_file=NET_FILE,
+            route_file=ROUTE_FILE,
+            seed=42,
+            num_decisions=20,
+        )
+        without_dropout = run_scenario_cell(
+            tripinfo_output=tmp_path / "ft_no_dropout.xml", **kwargs
+        )
+        with_full_dropout = run_scenario_cell(
+            tripinfo_output=tmp_path / "ft_full_dropout.xml",
+            detector_dropout_rate=1.0,
+            **kwargs,
+        )
+
+        assert with_full_dropout == without_dropout
+
     def test_rl_mode_raises_rather_than_silently_producing_garbage(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="net and obs"):
             run_scenario_cell(

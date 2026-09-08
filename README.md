@@ -199,7 +199,10 @@ pytest                  # full test suite (unit + integration + chaos)
 ```
 
 CI (`.github/workflows/ci.yml`) runs all four on every push/PR; a nightly workflow
-(`eval.yml`) re-runs a smoke-sized evaluation as a regression gate.
+(`eval.yml`) re-runs a smoke-sized evaluation as a regression gate. `make help` lists the
+same commands plus `train`/`eval`/`demo`/`up`/`down` shortcuts — `up`/`down` wrap `docker
+compose`, exercised for real via `scripts/kind_smoke_test.py`'s Helm/kind path rather than
+`docker compose up` directly.
 
 ## License
 

@@ -1,9 +1,4 @@
 # ATLAS developer entrypoints. `make help` lists every target.
-#
-# Week 1 status: `up` is a real but currently-empty compose stack (see docker-compose.yml
-# for why). `train`, `eval`, and `demo` are not implemented yet -- they're planned Week 5+
-# targets and are listed here so the intended developer surface is documented, but they
-# fail loudly rather than silently doing nothing.
 
 .PHONY: help up down test smoke lint fmt typecheck train eval demo clean
 
@@ -17,9 +12,9 @@ help:
 	@echo "  make fmt         - auto-format with ruff"
 	@echo "  make typecheck   - run mypy in strict mode"
 	@echo "  make clean       - remove caches and generated sandbox data"
-	@echo "  make train       - [not yet implemented, planned Week 5+]"
-	@echo "  make eval        - [not yet implemented, planned Week 11]"
-	@echo "  make demo        - [not yet implemented, planned Week 9-10]"
+	@echo "  make train       - train MAPPO on the 5-junction corridor curriculum stage"
+	@echo "  make eval        - reproduce the real Week 11 evaluation pilot report"
+	@echo "  make demo        - run the Cognitive API demo server (for the frontend dashboard)"
 
 up:
 	docker compose up -d
@@ -50,13 +45,12 @@ clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
 train:
-	@echo "Not yet implemented: MARL training lands in Week 5-6 (see docs/design/13_roadmap.md)."
-	@exit 1
+	# Real, but not trained to convergence in this environment -- needs a real
+	# Colab/Kaggle GPU session (see README's "What isn't done" / ADR-0013).
+	python scripts/train_mappo_corridor.py
 
 eval:
-	@echo "Not yet implemented: the evaluation harness lands in Week 11 (see docs/design/13_roadmap.md)."
-	@exit 1
+	python scripts/run_evaluation_pilot.py
 
 demo:
-	@echo "Not yet implemented: the end-to-end demo lands in Week 9-10 (see docs/design/13_roadmap.md)."
-	@exit 1
+	python scripts/run_dashboard_demo_api.py

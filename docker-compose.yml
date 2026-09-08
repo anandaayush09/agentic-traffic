@@ -4,16 +4,20 @@
 # (docs/design/05_communication.md). Week 6 added the first control-plane services:
 # intersection_agent (one junction's decision loop, docs/design/04_agent_architecture.md
 # section 4.1) and watchdog (heartbeat staleness detection / fallback trigger, section
-# 4.1's failure-recovery pattern). Week 7 adds corridor_coordinator (green-wave offset
-# hints + spillback alerts, section 4.2). Redis/Postgres are still later work; adding
-# empty stubs for those ahead of time would be scaffolding nothing depends on yet (the
-# repo-wide rule against speculative abstractions).
+# 4.1's failure-recovery pattern). Week 7 added corridor_coordinator (green-wave offset
+# hints + spillback alerts, section 4.2). Week 10 added cognitive_api (the LangGraph
+# Supervisor + JWT-protected approval queue, served by scripts/run_dashboard_demo_api.py --
+# an in-memory demo server, not yet bus-connected; see ADR-0012 for why the public demo
+# ships as a frozen static build instead of pointing at this live container). Redis/
+# Postgres remain unwired in this build (ADR-0003's honest gap) -- adding empty compose
+# stubs for them would be scaffolding nothing depends on yet.
 #
-# NOTE: Docker is not installed on this project's primary dev machine (see the ATLAS
-# dev-environment memory) -- this file (and the Dockerfile it builds) is written
-# correctly against documented flags/recipes, but has not been run locally. `docker
-# compose config` and an actual `docker compose --profile core up` are expected to be
-# verified on a machine with Docker (or in CI), not assumed to work from inspection alone.
+# Verified for real against a running Docker Desktop + kind cluster in Week 10 (see
+# scripts/kind_smoke_test.py and .github/workflows/kind.yml) -- Docker was not available
+# on this project's dev machine until partway through the build, so earlier services here
+# (redpanda/intersection_agent/watchdog/corridor_coordinator) were written correctly
+# in-repo well before they were first actually run; the Helm chart / kind path is what has
+# been most recently exercised for real, not `docker compose up` directly.
 #
 # Planned profiles (filled in as each milestone lands):
 #   core  - twin, bus, redis, postgres, control-plane worker(s)  (Week 5-6)
@@ -100,3 +104,15 @@ services:
       redpanda:
         condition: service_healthy
     profiles: ["core", "full"]
+
+  cognitive_api:
+    build: .
+    container_name: atlas-cognitive-api
+    command: ["python", "scripts/run_dashboard_demo_api.py"]
+    environment:
+      # Same local/demo-only value as intersection_agent above -- a real deployment
+      # injects this via a Secret (deploy/helm/atlas/templates/secret-cognitive-api.yaml).
+      ATLAS_JWT_SECRET: "local-demo-secret-do-not-use-in-prod-32-bytes"
+    ports:
+      - "8003:8000" # host 8003 to avoid colliding with intersection_agent's 8000:8000
+    profiles: ["full"] # not bus-connected yet, so not part of the "core" control-plane profile

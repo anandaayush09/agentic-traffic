@@ -1,0 +1,22 @@
+cognitiveApi:
+  image:
+    repository: atlas-traffic
+    tag: dev
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8000
+  service:
+    type: ClusterIP
+  # A real secret in any non-dev environment -- values-kind.yaml overrides this with
+  # a per-cluster generated one; the chart-level default matches
+  # scripts/run_dashboard_demo_api.py's own hardcoded demo secret so `helm install`
+  # with no overrides still boots into a working, JWT-consistent demo.
+  jwtSecret: "local-demo-secret-do-not-use-in-prod-32-bytes"
+  dashboardOrigins: "http://localhost:5173"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

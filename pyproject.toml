@@ -72,6 +72,21 @@ perception = [
     "onnxruntime>=1.20,<2",
 ]
 
+[[tool.uv.index]]
+# CPU-only torch wheels, explicitly -- PyPI's default Linux torch wheel drags in the
+# full CUDA toolkit (nvidia-cublas/cudnn/cusparse/etc, ~2.5GB combined) even though no
+# service in this project trains inside a container (training runs on Colab/Kaggle
+# GPUs, Part 6). Windows dev already resolves a `+cpu` build from the default index
+# without this, but Linux (the Docker/kind target) does not -- found for real building
+# the Week 10 Docker image, whose build kept timing out downloading nvidia-cudnn-cu12
+# alone (674MB) before this pin.
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

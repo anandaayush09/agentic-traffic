@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -56,16 +57,27 @@ def main() -> None:
         InMemorySaver(),
         additional_files=[vtypes_file] if vtypes_file.is_file() else [],
     )
-    service = CognitiveApiService(graph)
-    app = create_app(service, DEMO_JWT_SECRET)
+    # Overridable so the same script serves both local dev (the hardcoded demo
+    # secret, printed below, is fine to know) and a kind/Helm deployment (deploy/
+    # helm/atlas/values-kind.yaml sets a real secret via env var) without a second
+    # entrypoint to keep in sync.
+    jwt_secret = os.environ.get("ATLAS_JWT_SECRET", DEMO_JWT_SECRET)
+    dashboard_origins_env = os.environ.get("ATLAS_DASHBOARD_ORIGINS")
+    dashboard_origins = dashboard_origins_env.split(",") if dashboard_origins_env else None
 
-    token = create_operator_token("demo-operator", DEMO_JWT_SECRET, expires_in_s=8 * 3600.0)
+    service = CognitiveApiService(graph)
+    app = create_app(service, jwt_secret, dashboard_origins=dashboard_origins)
+
+    token = create_operator_token("demo-operator", jwt_secret, expires_in_s=8 * 3600.0)
     print("=== Cognitive API demo server ===")
     print("Operator JWT (paste into the dashboard's 'Operator token' field):")
     print(token)
     print()
 
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    # 0.0.0.0, not 127.0.0.1: this same script runs both on a developer's machine
+    # (reachable via localhost either way) and inside a kind pod (must bind all
+    # interfaces to be reachable from the Service in front of it).
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")  # noqa: S104
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+# Overrides for a local kind cluster (docs/design/07_tech_stack.md: "Helm/kind").
+# `kind load docker-image atlas-traffic:dev --name atlas` loads the image directly
+# into the cluster's node, so pullPolicy must be Never -- kind nodes have no access to
+# a registry to pull `atlas-traffic:dev` from, and IfNotPresent would still try a pull
+# on a cache miss.
+cognitiveApi:
+  image:
+    pullPolicy: Never
+  service:
+    type: NodePort

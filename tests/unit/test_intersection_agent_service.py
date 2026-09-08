@@ -16,6 +16,7 @@ from atlas.bus.producer import BusProducer
 from atlas.bus.schema_registry import SchemaRegistry
 from atlas.common.config import project_root
 from atlas.control.shield import ShieldConfig
+from atlas.services.auth import create_operator_token
 from atlas.services.intersection_agent import (
     IntersectionAgentConfig,
     IntersectionAgentService,
@@ -24,6 +25,7 @@ from atlas.services.intersection_agent import (
 
 NETWORK_DIR = project_root() / "data" / "networks" / "sandbox"
 TLS_ID = "B1"
+JWT_SECRET = "test-secret-do-not-use-in-prod-32-bytes-min"
 
 
 @dataclass
@@ -102,14 +104,19 @@ class TestIntersectionAgentApp:
     def test_health_and_mode_endpoints(self) -> None:
         service = IntersectionAgentService(_make_config())
         service.start()
-        app = create_app(service, start_background_loop=False)
+        app = create_app(service, JWT_SECRET, start_background_loop=False)
+        token = create_operator_token("operator-1", JWT_SECRET)
         try:
             with TestClient(app) as client:
                 health = client.get("/health").json()
                 assert health["tls_id"] == TLS_ID
                 assert health["mode"] == "max_pressure"
 
-                mode_response = client.post("/mode", json={"mode": "fixed_time"})
+                mode_response = client.post(
+                    "/mode",
+                    json={"mode": "fixed_time"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
                 assert mode_response.status_code == 200
                 assert mode_response.json() == {"mode": "fixed_time"}
                 assert client.get("/mode").json() == {"mode": "fixed_time"}
@@ -119,10 +126,29 @@ class TestIntersectionAgentApp:
     def test_invalid_mode_is_rejected(self) -> None:
         service = IntersectionAgentService(_make_config())
         service.start()
-        app = create_app(service, start_background_loop=False)
+        app = create_app(service, JWT_SECRET, start_background_loop=False)
+        token = create_operator_token("operator-1", JWT_SECRET)
         try:
             with TestClient(app) as client:
-                response = client.post("/mode", json={"mode": "not_a_real_mode"})
+                response = client.post(
+                    "/mode",
+                    json={"mode": "not_a_real_mode"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
                 assert response.status_code == 422
+        finally:
+            service.stop()
+
+    def test_set_mode_without_a_token_is_rejected(self) -> None:
+        """The real point of Week 10's fix -- POST /mode used to be unauthenticated
+        entirely; confirms it now genuinely requires a valid operator JWT."""
+        service = IntersectionAgentService(_make_config())
+        service.start()
+        app = create_app(service, JWT_SECRET, start_background_loop=False)
+        try:
+            with TestClient(app) as client:
+                response = client.post("/mode", json={"mode": "fixed_time"})
+                assert response.status_code == 401
+                assert client.get("/mode").json() == {"mode": "max_pressure"}
         finally:
             service.stop()

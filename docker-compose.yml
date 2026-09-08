@@ -56,6 +56,10 @@ services:
       - --network=manhattan_midtown
       - --mode=max_pressure
       - --kafka-brokers=redpanda:9092
+    environment:
+      # Local/demo-only value -- a real deployment injects this via a Secret (see
+      # deploy/helm/atlas/templates/secret-cognitive-api.yaml for the k8s equivalent).
+      ATLAS_JWT_SECRET: "local-demo-secret-do-not-use-in-prod-32-bytes"
     ports:
       - "8000:8000"
     depends_on:

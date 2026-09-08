@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-cognitive-api
+  labels:
+    app.kubernetes.io/name: cognitive-api
+    {{- include "atlas.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.cognitiveApi.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cognitive-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cognitive-api
+    spec:
+      containers:
+        - name: cognitive-api
+          image: "{{ .Values.cognitiveApi.image.repository }}:{{ .Values.cognitiveApi.image.tag }}"
+          imagePullPolicy: {{ .Values.cognitiveApi.image.pullPolicy }}
+          command: ["python", "scripts/run_dashboard_demo_api.py"]
+          env:
+            - name: ATLAS_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-cognitive-api-jwt
+                  key: secret
+            - name: ATLAS_DASHBOARD_ORIGINS
+              value: {{ .Values.cognitiveApi.dashboardOrigins | quote }}
+          ports:
+            - containerPort: {{ .Values.cognitiveApi.port }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.cognitiveApi.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.cognitiveApi.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.cognitiveApi.resources | nindent 12 }}

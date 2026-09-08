@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-cognitive-api
+  labels:
+    {{- include "atlas.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.cognitiveApi.service.type }}
+  selector:
+    app.kubernetes.io/name: cognitive-api
+  ports:
+    - port: {{ .Values.cognitiveApi.port }}
+      targetPort: {{ .Values.cognitiveApi.port }}
+      protocol: TCP

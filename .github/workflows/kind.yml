@@ -1,0 +1,57 @@
+name: kind smoke test
+
+# Week 10 roadmap (docs/design/13_roadmap.md): "kind smoke test (install -> scripted
+# demo scenario -> chaos test) in CI". Separate workflow from ci.yml since it builds a
+# full Docker image and spins up a real kind cluster -- slower than the lint/type/test
+# job, same rationale as eval.yml being split out from ci.yml in Week 6.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  kind-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Build manhattan_midtown network (needed inside the image)
+        run: uv run python scripts/build_district_network.py
+
+      - name: Build Docker image
+        run: docker build -t atlas-traffic:dev .
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: atlas
+          install_local_path_provisioner: false
+
+      - name: Load image into kind
+        run: kind load docker-image atlas-traffic:dev --name atlas
+
+      - name: Helm install
+        run: |
+          helm install atlas deploy/helm/atlas -f deploy/helm/atlas/values-kind.yaml \
+            --wait --timeout 3m
+
+      - name: Run smoke test (install -> scripted demo scenario -> chaos test)
+        # The script owns its own kubectl port-forward process (including
+        # restarting it after the chaos test's pod deletion) -- see
+        # scripts/kind_smoke_test.py's PortForward class.
+        run: uv run python scripts/kind_smoke_test.py --base-url http://localhost:18000
+
+      - name: Dump pod logs on failure
+        if: failure()
+        run: kubectl logs -l app.kubernetes.io/name=cognitive-api --all-containers --tail=200

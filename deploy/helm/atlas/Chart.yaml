@@ -1,0 +1,14 @@
+apiVersion: v2
+name: atlas
+description: >-
+  ATLAS -- Agentic Traffic Learning & Adaptive Signaling (docs/design/13_roadmap.md
+  Week 10). v1 scope, deliberately: deploys the Cognitive API demo server (the one
+  service with a real, verified end-to-end path -- Supervisor graph -> real SUMO
+  what-if -> the Week 10 React dashboard) to a kind cluster. Redpanda/intersection_agent/
+  watchdog/corridor_coordinator already have working docker-compose entries
+  (docker-compose.yml) and are natural follow-on templates in this same chart, added
+  incrementally rather than all at once -- same "one deliverable at a time, verified
+  for real" discipline as every other week of this project.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

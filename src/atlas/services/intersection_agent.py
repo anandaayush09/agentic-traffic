@@ -21,8 +21,11 @@ sim time for the non-RL modes, which `MultiAgentSignalEnv` didn't expose before 
 service needed it -- see its `.connection`/`.sim_time` properties, added for this,
 mirroring `SumoTwinEnv`/`SingleJunctionEnv`'s existing escape-hatch precedent.
 
-JWT auth on `/mode` is explicitly deferred (docs/design/13_roadmap.md, Week 10: "JWT auth
-on mutating APIs") -- not silently skipped, just not yet in scope.
+JWT auth on `/mode` (docs/design/13_roadmap.md, Week 10: "JWT auth on mutating APIs";
+docs/design/03_system_architecture.md section 3.6's "Control API...JWT, operator-only")
+-- deferred through Week 6-9, closed here using the same `atlas.services.auth.
+require_operator` dependency the Week 10 Cognitive API already uses, not a
+second auth scheme.
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ from typing import Any
 
 import numpy as np
 import torch
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from pydantic import BaseModel, Field
 
 from atlas.bus.producer import BusProducer
@@ -46,6 +49,7 @@ from atlas.control.max_pressure import MaxPressureProgram
 from atlas.control.shield import ShieldConfig
 from atlas.marl.network import ActorCritic
 from atlas.rl.multi_agent_env import MultiAgentSignalEnv, MultiAgentSignalEnvConfig
+from atlas.services.auth import require_operator
 from atlas.services.decision import AgentMode, actor_name_for_mode, select_action_for_mode
 from atlas.twin.env import TwinEnvConfig
 
@@ -216,10 +220,16 @@ class ModeUpdate(BaseModel):
     mode: AgentMode
 
 
-def create_app(service: IntersectionAgentService, start_background_loop: bool = True) -> FastAPI:
+def create_app(
+    service: IntersectionAgentService, jwt_secret: str, start_background_loop: bool = True
+) -> FastAPI:
     """`start_background_loop=False` skips auto-starting `run_forever()` on app
     startup -- used by tests that want to drive `service.start()`/`decide_and_step()`
-    themselves rather than racing an async background task.
+    themselves rather than racing an async background task. `jwt_secret` gates the
+    mutating `POST /mode` endpoint (an operator forcing rl/max_pressure/fixed_time/off
+    at a live junction is exactly the "Control API...JWT, operator-only" mutating
+    action the design doc names) -- required, not optional, so a caller can't
+    accidentally deploy this service unauthenticated.
     """
 
     @asynccontextmanager
@@ -233,6 +243,7 @@ def create_app(service: IntersectionAgentService, start_background_loop: bool = 
                 task.cancel()
 
     app = FastAPI(title=f"Intersection Agent ({service.config.tls_id})", lifespan=lifespan)
+    require_jwt = require_operator(jwt_secret)
 
     @app.get("/health")
     def get_health() -> dict[str, Any]:
@@ -243,7 +254,10 @@ def create_app(service: IntersectionAgentService, start_background_loop: bool = 
         return {"mode": service.mode}
 
     @app.post("/mode")
-    def set_mode(update: ModeUpdate) -> dict[str, str]:
+    def set_mode(
+        update: ModeUpdate,
+        _claims: dict[str, object] = Depends(require_jwt),  # noqa: B008
+    ) -> dict[str, str]:
         service.mode = update.mode
         return {"mode": service.mode}
 
@@ -256,6 +270,7 @@ def main() -> None:
     directly and by docker-compose's intersection_agent service.
     """
     import argparse
+    import os
 
     import uvicorn
 
@@ -276,7 +291,17 @@ def main() -> None:
         "--kafka-brokers", default=None, help="e.g. localhost:9092; omit to run bus-less"
     )
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--jwt-secret",
+        default=None,
+        help="Signs/verifies operator JWTs for POST /mode. Falls back to the "
+        "ATLAS_JWT_SECRET env var; refuses to start with neither set.",
+    )
     args = parser.parse_args()
+
+    jwt_secret = args.jwt_secret or os.environ.get("ATLAS_JWT_SECRET")
+    if not jwt_secret:
+        parser.error("--jwt-secret or the ATLAS_JWT_SECRET env var is required")
 
     network_dir = project_root() / "data" / "networks" / args.network
     vtypes_file = network_dir / "vtypes.add.xml"
@@ -293,7 +318,7 @@ def main() -> None:
     )
     bus_producer = BusProducer.connect([args.kafka_brokers]) if args.kafka_brokers else None
     service = IntersectionAgentService(config, bus_producer=bus_producer)
-    uvicorn.run(create_app(service), host="0.0.0.0", port=args.port)  # noqa: S104
+    uvicorn.run(create_app(service, jwt_secret), host="0.0.0.0", port=args.port)  # noqa: S104
 
 
 if __name__ == "__main__":

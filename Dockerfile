@@ -39,3 +39,10 @@ COPY data/networks/ data/networks/
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"
+
+# Non-root, per docs/design/10_deployment.md section 10.2 ("non-root user") --
+# everything above runs as root only because apt-get/uv need it; the actual service
+# process never does. chown after every COPY so the app user can still read its own
+# files (the .venv/src/schemas/scripts/data trees are all owned by root by default).
+RUN useradd --create-home --uid 10001 atlas && chown -R atlas:atlas /app
+USER atlas

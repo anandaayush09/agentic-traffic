@@ -7,6 +7,9 @@ interface ApprovalQueueProps {
   onApprove: (incidentId: string) => void;
   onReject: (incidentId: string) => void;
   busyId: string | null;
+  /** Public read-only demo mode: renders a "would require approval" note instead of
+   * Approve/Reject buttons -- there is no backend to send the action to at all. */
+  readOnly?: boolean;
 }
 
 export function ApprovalQueue({
@@ -16,6 +19,7 @@ export function ApprovalQueue({
   onApprove,
   onReject,
   busyId,
+  readOnly = false,
 }: ApprovalQueueProps) {
   if (incidents.length === 0) {
     return <p className="empty">No incidents submitted yet.</p>;
@@ -38,7 +42,12 @@ export function ApprovalQueue({
           <div className="row playbook">
             {incident.state.proposal?.playbook_name ?? "(no proposal yet)"}
           </div>
-          {incident.pending_approval && (
+          {incident.pending_approval && readOnly && (
+            <div className="row actions">
+              <span className="empty">Would require operator approval</span>
+            </div>
+          )}
+          {incident.pending_approval && !readOnly && (
             <div className="row actions">
               <button
                 type="button"

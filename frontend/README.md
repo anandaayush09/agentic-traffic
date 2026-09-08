@@ -1,32 +1,40 @@
-# React + TypeScript + Vite
+# ATLAS Operations Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + TypeScript + Vite + MapLibre GL dashboard (docs/design/13_roadmap.md's Week
+10 deliverable): map view, approval queue, and XAI panel against the real Cognitive
+API (`src/atlas/services/cognitive_api.py`).
 
-Currently, two official plugins are available:
+## Live/dev mode
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Then run a real backend (see `../scripts/run_dashboard_demo_api.py`) and paste the
+operator JWT it prints into the dashboard's "Operator token" field to approve/reject
+incidents or submit a demo one.
+
+`npm run build` produces the same live-backed app as a static bundle (`dist/`) --
+still needs a real Cognitive API reachable from wherever it's hosted.
+
+## Public read-only demo
+
+```bash
+npm run build:demo
+```
+
+Builds a **separate, fully static** variant (`VITE_STATIC_DEMO=true`, set by
+`.env.demo`) with:
+- No backend calls at all -- incidents come from `src/public_demo_snapshot.json`, a
+  real, frozen snapshot of the Week 9 scripted incident suite run through the real
+  Supervisor graph against the real manhattan_midtown corridor
+  (`../scripts/export_public_demo_snapshot.py` regenerates it).
+- No Approve/Reject buttons or operator-token/API-base-URL inputs -- a pending
+  incident shows "Would require operator approval" as inert text instead.
+
+This matches docs/design/10_deployment.md's public demo constraint ("zero control
+endpoints, no bus, no LLM keys") literally: there is no backend to call, so there is
+nothing to secure or misuse. The resulting `dist/` is a plain static site -- deploy it
+to any static host (GitHub Pages, Netlify, Vercel, Cloudflare Pages) with no server
+component needed.

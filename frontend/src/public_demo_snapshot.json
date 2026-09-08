@@ -1,0 +1,497 @@
+[
+  {
+    "incident_id": "inc-accident-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000001",
+        "ts": "2026-01-01T08:00:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-accident-01",
+        "class": "accident",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "448686048#0"
+          ]
+        },
+        "confidence": 0.9
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "divert_arterial",
+        "params": {
+          "from_edge": "448686048#0",
+          "to_edge": "448686048#0",
+          "duration_s": 600.0
+        },
+        "rationale": "Deterministic default for class='accident': divert around '448686048#0' for 10 minutes -- no LLM available to pick a real alternate edge or a duration informed by what-if evidence."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "auto_applied": false,
+      "approved": null,
+      "status": "triaged"
+    },
+    "pending_approval": true,
+    "interrupt": {
+      "incident_id": "inc-accident-01",
+      "proposal": {
+        "playbook_name": "divert_arterial",
+        "params": {
+          "from_edge": "448686048#0",
+          "to_edge": "448686048#0",
+          "duration_s": 600.0
+        },
+        "rationale": "Deterministic default for class='accident': divert around '448686048#0' for 10 minutes -- no LLM available to pick a real alternate edge or a duration informed by what-if evidence."
+      },
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "question": "Approve this playbook proposal?"
+    }
+  },
+  {
+    "incident_id": "inc-closure-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000002",
+        "ts": "2026-01-01T08:05:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-closure-01",
+        "class": "closure",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "464516471#0"
+          ]
+        },
+        "confidence": 0.95
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "divert_arterial",
+        "params": {
+          "from_edge": "464516471#0",
+          "to_edge": "464516471#0",
+          "duration_s": 1800.0
+        },
+        "rationale": "Deterministic default for class='closure': divert around '464516471#0' for 30 minutes."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "auto_applied": false,
+      "approved": null,
+      "status": "triaged"
+    },
+    "pending_approval": true,
+    "interrupt": {
+      "incident_id": "inc-closure-01",
+      "proposal": {
+        "playbook_name": "divert_arterial",
+        "params": {
+          "from_edge": "464516471#0",
+          "to_edge": "464516471#0",
+          "duration_s": 1800.0
+        },
+        "rationale": "Deterministic default for class='closure': divert around '464516471#0' for 30 minutes."
+      },
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "question": "Approve this playbook proposal?"
+    }
+  },
+  {
+    "incident_id": "inc-comms-fault-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000007",
+        "ts": "2026-01-01T08:30:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-comms-fault-01",
+        "class": "comms_fault",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "42430338",
+            "42430342"
+          ]
+        },
+        "confidence": 0.6
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "switch_to_max_pressure",
+        "params": {
+          "junction_ids": [
+            "42430338",
+            "42430342"
+          ]
+        },
+        "rationale": "Deterministic default for class='sensor_fault': fall back to max-pressure at the affected junction(s), the safe response to degraded telemetry."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": true,
+      "what_if_improved": true,
+      "auto_applied": true,
+      "approved": true,
+      "status": "cleared"
+    },
+    "pending_approval": false,
+    "interrupt": null
+  },
+  {
+    "incident_id": "inc-construction-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000003",
+        "ts": "2026-01-01T08:10:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-construction-01",
+        "class": "construction",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "127693103#0"
+          ]
+        },
+        "confidence": 1.0
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "meter_upstream",
+        "params": {
+          "corridor_id": "127693103#0",
+          "rate": 0.7
+        },
+        "rationale": "Deterministic default for class='construction': meter inflow into '127693103#0' to 70%."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "auto_applied": false,
+      "approved": null,
+      "status": "triaged"
+    },
+    "pending_approval": true,
+    "interrupt": {
+      "incident_id": "inc-construction-01",
+      "proposal": {
+        "playbook_name": "meter_upstream",
+        "params": {
+          "corridor_id": "127693103#0",
+          "rate": 0.7
+        },
+        "rationale": "Deterministic default for class='construction': meter inflow into '127693103#0' to 70%."
+      },
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "question": "Approve this playbook proposal?"
+    }
+  },
+  {
+    "incident_id": "inc-emergency-run-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000008",
+        "ts": "2026-01-01T08:35:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-emergency-run-01",
+        "class": "emergency_run",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "464516471#0"
+          ]
+        },
+        "confidence": 1.0
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "hold_current_plan",
+        "params": {
+          "reason": "emergency_run is handled by the Preemption Overlay directly, not a playbook."
+        },
+        "rationale": "Deterministic default for class='emergency_run': no playbook action -- preemption is a separate, deterministic mechanism (docs/design/04_agent_architecture.md section 4.3)."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": true,
+      "what_if_improved": true,
+      "auto_applied": true,
+      "approved": true,
+      "status": "cleared"
+    },
+    "pending_approval": false,
+    "interrupt": null
+  },
+  {
+    "incident_id": "inc-event-surge-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000005",
+        "ts": "2026-01-01T08:20:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-event-surge-01",
+        "class": "event_surge",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "127693103#0"
+          ]
+        },
+        "confidence": 0.8
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "meter_upstream",
+        "params": {
+          "corridor_id": "127693103#0",
+          "rate": 0.8
+        },
+        "rationale": "Deterministic default for class='event_surge': meter inflow into '127693103#0' to 80%."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "auto_applied": false,
+      "approved": null,
+      "status": "triaged"
+    },
+    "pending_approval": true,
+    "interrupt": {
+      "incident_id": "inc-event-surge-01",
+      "proposal": {
+        "playbook_name": "meter_upstream",
+        "params": {
+          "corridor_id": "127693103#0",
+          "rate": 0.8
+        },
+        "rationale": "Deterministic default for class='event_surge': meter inflow into '127693103#0' to 80%."
+      },
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "question": "Approve this playbook proposal?"
+    }
+  },
+  {
+    "incident_id": "inc-sensor-fault-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000006",
+        "ts": "2026-01-01T08:25:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-sensor-fault-01",
+        "class": "sensor_fault",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "42430333"
+          ]
+        },
+        "confidence": 0.85
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "switch_to_max_pressure",
+        "params": {
+          "junction_ids": [
+            "42430333"
+          ]
+        },
+        "rationale": "Deterministic default for class='sensor_fault': fall back to max-pressure at the affected junction(s), the safe response to degraded telemetry."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": true,
+      "what_if_improved": true,
+      "auto_applied": true,
+      "approved": true,
+      "status": "cleared"
+    },
+    "pending_approval": false,
+    "interrupt": null
+  },
+  {
+    "incident_id": "inc-unknown-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000010",
+        "ts": "2026-01-01T08:45:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-unknown-01",
+        "class": "unknown",
+        "status": "detected",
+        "confidence": 0.3
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "hold_current_plan",
+        "params": {
+          "reason": "Incident class is 'unknown' -- no safe deterministic action without more evidence."
+        },
+        "rationale": "Deterministic default for class='unknown': hold and keep monitoring rather than guess."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": true,
+      "what_if_improved": true,
+      "auto_applied": true,
+      "approved": true,
+      "status": "cleared"
+    },
+    "pending_approval": false,
+    "interrupt": null
+  },
+  {
+    "incident_id": "inc-vip-run-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000009",
+        "ts": "2026-01-01T08:40:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-vip-run-01",
+        "class": "vip_run",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "464516471#0"
+          ]
+        },
+        "confidence": 1.0
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "hold_current_plan",
+        "params": {
+          "reason": "emergency_run is handled by the Preemption Overlay directly, not a playbook."
+        },
+        "rationale": "Deterministic default for class='emergency_run': no playbook action -- preemption is a separate, deterministic mechanism (docs/design/04_agent_architecture.md section 4.3)."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": true,
+      "what_if_improved": true,
+      "auto_applied": true,
+      "approved": true,
+      "status": "cleared"
+    },
+    "pending_approval": false,
+    "interrupt": null
+  },
+  {
+    "incident_id": "inc-weather-01",
+    "state": {
+      "incident": {
+        "msg_id": "00000000-0000-0000-0000-000000000004",
+        "ts": "2026-01-01T08:15:00Z",
+        "schema_version": "1",
+        "incident_id": "inc-weather-01",
+        "class": "weather",
+        "status": "detected",
+        "location": {
+          "link_ids": [
+            "448686048#0"
+          ]
+        },
+        "confidence": 0.7
+      },
+      "available_playbooks": [
+        "bus_bridge",
+        "divert_arterial",
+        "hold_current_plan",
+        "meter_upstream",
+        "switch_to_max_pressure",
+        "weather_capacity_derate"
+      ],
+      "proposal": {
+        "playbook_name": "weather_capacity_derate",
+        "params": {
+          "area_id": "448686048#0",
+          "factor": 0.6
+        },
+        "rationale": "Deterministic default for class='weather': derate assumed capacity to 60%."
+      },
+      "provider_used": "deterministic",
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "auto_applied": false,
+      "approved": null,
+      "status": "triaged"
+    },
+    "pending_approval": true,
+    "interrupt": {
+      "incident_id": "inc-weather-01",
+      "proposal": {
+        "playbook_name": "weather_capacity_derate",
+        "params": {
+          "area_id": "448686048#0",
+          "factor": 0.6
+        },
+        "rationale": "Deterministic default for class='weather': derate assumed capacity to 60%."
+      },
+      "what_if_checked": false,
+      "what_if_improved": null,
+      "question": "Approve this playbook proposal?"
+    }
+  }
+]

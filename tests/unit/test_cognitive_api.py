@@ -8,6 +8,7 @@ real (not just asserted).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -220,6 +221,85 @@ class TestHttpLayer:
             response = client.post("/incidents/inc-http-conflict/approve", headers=auth_headers)
 
         assert response.status_code == 409
+
+
+class _FakeLiveTraffic:
+    """Records what the API hands the live twin; no SUMO involved."""
+
+    def __init__(self, apply_raises: bool = False) -> None:
+        self.applied: list[dict[str, Any]] = []
+        self._apply_raises = apply_raises
+
+    def geometry(self) -> list[dict[str, object]]:
+        return [{"edge_id": "e1", "lanes": 2, "speed_limit_mps": 13.9, "coords": [[0.0, 1.0]]}]
+
+    def snapshot(self) -> dict[str, object]:
+        return {"ready": True, "sim_time_s": 12.0, "edges": {}, "vehicles": []}
+
+    def apply_incident(self, incident: Mapping[str, object]) -> list[str]:
+        if self._apply_raises:
+            raise RuntimeError("live twin exploded")
+        self.applied.append(dict(incident))
+        return ["e1"]
+
+
+class TestLiveTrafficEndpoints:
+    def test_traffic_endpoints_are_404_when_no_live_twin_is_attached(self) -> None:
+        client = TestClient(create_app(_service(), SECRET))
+
+        assert client.get("/traffic").status_code == 404
+        assert client.get("/traffic/geometry").status_code == 404
+
+    def test_traffic_endpoints_are_unauthenticated_and_serve_the_live_twin(self) -> None:
+        client = TestClient(create_app(_service(), SECRET, live_traffic=_FakeLiveTraffic()))
+
+        snapshot = client.get("/traffic")
+        geometry = client.get("/traffic/geometry")
+
+        assert snapshot.status_code == 200
+        assert snapshot.json()["sim_time_s"] == 12.0
+        assert geometry.status_code == 200
+        assert geometry.json()["edges"][0]["edge_id"] == "e1"
+
+    def test_submitted_incident_is_handed_to_the_live_twin(self) -> None:
+        live = _FakeLiveTraffic()
+        client = TestClient(create_app(_service(), SECRET, live_traffic=live))
+        token = create_operator_token("op-1", SECRET)
+
+        with patch("atlas.cognitive.supervisor.run_what_if", return_value=REQUEST_APPROVAL_RESULT):
+            response = client.post(
+                "/incidents",
+                json=_incident("inc-live", "accident"),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert response.status_code == 201
+        assert [i["incident_id"] for i in live.applied] == ["inc-live"]
+
+    def test_unauthenticated_post_never_reaches_the_live_twin(self) -> None:
+        live = _FakeLiveTraffic()
+        client = TestClient(create_app(_service(), SECRET, live_traffic=live))
+
+        response = client.post("/incidents", json=_incident("inc-noauth", "accident"))
+
+        assert response.status_code == 401
+        assert live.applied == []
+
+    def test_a_failing_live_twin_does_not_fail_the_incident(self) -> None:
+        client = TestClient(
+            create_app(_service(), SECRET, live_traffic=_FakeLiveTraffic(apply_raises=True))
+        )
+        token = create_operator_token("op-1", SECRET)
+
+        with patch("atlas.cognitive.supervisor.run_what_if", return_value=REQUEST_APPROVAL_RESULT):
+            response = client.post(
+                "/incidents",
+                json=_incident("inc-live-boom", "accident"),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert response.status_code == 201
+        assert response.json()["pending_approval"] is True
 
 
 class TestRealSumoBackedVerification:

@@ -28,7 +28,7 @@ and a frontend can be built and tested against real Supervisor graph execution t
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +41,16 @@ from atlas.common.logging import get_logger
 from atlas.services.auth import require_operator
 
 logger = get_logger(__name__)
+
+
+class LiveTraffic(Protocol):
+    """What the API needs from a live-traffic provider -- a Protocol, not an import of
+    `atlas.services.live_traffic`, so this module (and its tests) never depend on SUMO.
+    `LiveTrafficService` is the real implementation."""
+
+    def geometry(self) -> list[dict[str, object]]: ...
+    def snapshot(self) -> dict[str, object]: ...
+    def apply_incident(self, incident: Mapping[str, object]) -> list[str]: ...
 
 
 class IncidentNotFoundError(KeyError):
@@ -123,6 +133,7 @@ def create_app(
     service: CognitiveApiService,
     jwt_secret: str,
     dashboard_origins: list[str] | None = None,
+    live_traffic: LiveTraffic | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Cognitive API")
     require_jwt = require_operator(jwt_secret)
@@ -144,6 +155,20 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    # Read-only, unauthenticated like the other GETs. 404 (not an empty body) when no
+    # live twin is attached, so the dashboard can tell "unavailable" from "no traffic".
+    @app.get("/traffic/geometry")
+    def traffic_geometry() -> dict[str, Any]:
+        if live_traffic is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Live traffic is not enabled")
+        return {"edges": live_traffic.geometry()}
+
+    @app.get("/traffic")
+    def traffic_snapshot() -> dict[str, object]:
+        if live_traffic is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Live traffic is not enabled")
+        return live_traffic.snapshot()
+
     @app.get("/incidents")
     def list_incidents() -> list[dict[str, Any]]:
         return service.list_incidents()
@@ -160,7 +185,16 @@ def create_app(
         incident: dict[str, Any],
         _claims: dict[str, object] = Depends(require_jwt),  # noqa: B008
     ) -> dict[str, Any]:
-        return service.submit_incident(incident)
+        result = service.submit_incident(incident)
+        if live_traffic is not None:
+            # A road disruption is a side effect of the incident, never a precondition
+            # for it: the incident is already recorded, so a live-twin problem must not
+            # fail the request.
+            try:
+                live_traffic.apply_incident(incident)
+            except Exception:
+                logger.exception("cognitive_api.live_traffic_apply_failed")
+        return result
 
     @app.post("/incidents/{incident_id}/approve")
     def approve(

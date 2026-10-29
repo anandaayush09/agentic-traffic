@@ -5,6 +5,11 @@ wired to a real compiled Supervisor graph against the real manhattan_midtown cor
 not a mock server. Prints a ready-made operator JWT so the dashboard's "Operator token"
 field has something real to paste in immediately.
 
+Also starts the live digital twin (atlas.services.live_traffic) so the dashboard map
+shows real simulated traffic, and so submitted accident/closure/construction/weather
+incidents visibly disrupt the roads they name. Set ATLAS_LIVE_TRAFFIC=0 to run without
+it (incident approval only, no map traffic).
+
 Requires data/networks/manhattan_midtown/net.net.xml to already be built (run
 scripts/build_district_network.py first if it doesn't exist yet).
 
@@ -28,9 +33,35 @@ from atlas.cognitive.provider_chain import ProviderChain  # noqa: E402
 from atlas.cognitive.supervisor import build_supervisor_graph  # noqa: E402
 from atlas.common.config import project_root  # noqa: E402
 from atlas.services.auth import create_operator_token  # noqa: E402
-from atlas.services.cognitive_api import CognitiveApiService, create_app  # noqa: E402
+from atlas.services.cognitive_api import (  # noqa: E402
+    CognitiveApiService,
+    LiveTraffic,
+    create_app,
+)
 
 DEMO_JWT_SECRET = "local-demo-secret-do-not-use-in-prod-32-bytes"
+
+
+def _start_live_traffic(net_file: Path, network_dir: Path, vtypes_file: Path) -> LiveTraffic | None:
+    """Starts the live twin, or returns None (with the reason printed) rather than
+    failing -- the live map is an enhancement, the approval flow must still come up."""
+    if os.environ.get("ATLAS_LIVE_TRAFFIC", "1") == "0":
+        print("Live traffic: disabled (ATLAS_LIVE_TRAFFIC=0)")
+        return None
+    try:
+        from atlas.services.live_traffic import LiveTrafficService
+
+        service = LiveTrafficService(
+            net_file,
+            network_dir / "demand" / "pm_peak.rou.xml",
+            [vtypes_file] if vtypes_file.is_file() else [],
+        )
+    except Exception as exc:  # e.g. pyproj (a dev-extra dependency) not installed
+        print(f"Live traffic: disabled ({type(exc).__name__}: {exc})")
+        return None
+    service.start()
+    print("Live traffic: simulation starting in the background (map fills in ~5s)")
+    return service
 
 
 def main() -> None:
@@ -65,8 +96,12 @@ def main() -> None:
     dashboard_origins_env = os.environ.get("ATLAS_DASHBOARD_ORIGINS")
     dashboard_origins = dashboard_origins_env.split(",") if dashboard_origins_env else None
 
+    live_traffic = _start_live_traffic(net_file, network_dir, vtypes_file)
+
     service = CognitiveApiService(graph)
-    app = create_app(service, jwt_secret, dashboard_origins=dashboard_origins)
+    app = create_app(
+        service, jwt_secret, dashboard_origins=dashboard_origins, live_traffic=live_traffic
+    )
 
     token = create_operator_token("demo-operator", jwt_secret, expires_in_s=8 * 3600.0)
     print("=== Cognitive API demo server ===")

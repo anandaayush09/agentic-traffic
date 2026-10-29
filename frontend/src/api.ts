@@ -27,6 +27,40 @@ export interface Incident {
   interrupt: { question: string } | null;
 }
 
+// Live traffic from the real digital twin (src/atlas/services/live_traffic.py).
+export interface TrafficEdgeGeometry {
+  edge_id: string;
+  lanes: number;
+  speed_limit_mps: number;
+  /** [lon, lat] points along the road. */
+  coords: [number, number][];
+}
+
+export interface TrafficEdgeStat {
+  vehicles: number;
+  /** Mean speed / speed limit, 0..1; null when no vehicle is on the road. */
+  speed_ratio: number | null;
+}
+
+export interface TrafficDisruption {
+  name: string;
+  type: string;
+  edge_id: string;
+  incident_id: string;
+  ends_at_sim_s: number;
+}
+
+export interface TrafficSnapshot {
+  ready: boolean;
+  error: string | null;
+  sim_time_s: number;
+  stats: { vehicles: number; halted: number; mean_speed_kmh: number };
+  edges: Record<string, TrafficEdgeStat>;
+  /** [lon, lat, speed_mps] per vehicle. */
+  vehicles: [number, number, number][];
+  disruptions: TrafficDisruption[];
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -51,6 +85,14 @@ async function request<T>(
 
 export function listIncidents(baseUrl: string): Promise<Incident[]> {
   return request<Incident[]>(baseUrl, "/incidents");
+}
+
+export function getTrafficGeometry(baseUrl: string): Promise<{ edges: TrafficEdgeGeometry[] }> {
+  return request<{ edges: TrafficEdgeGeometry[] }>(baseUrl, "/traffic/geometry");
+}
+
+export function getTraffic(baseUrl: string): Promise<TrafficSnapshot> {
+  return request<TrafficSnapshot>(baseUrl, "/traffic");
 }
 
 function authHeaders(token: string): HeadersInit {

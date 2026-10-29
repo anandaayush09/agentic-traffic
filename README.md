@@ -152,6 +152,15 @@ python scripts/run_evaluation_pilot.py
 python scripts/run_dashboard_demo_api.py   # then: cd frontend && npm install && npm run dev
 ```
 
+The dashboard map shows **live traffic from the real digital twin**: `run_dashboard_demo_api.py`
+runs the Manhattan SUMO network in the background ([`live_traffic.py`](src/atlas/services/live_traffic.py)),
+roads are coloured by speed vs. limit, and every vehicle is a dot. The `Demo: accident` /
+`Demo: closure` buttons (or `POST /incidents` with `class` = accident / closure / construction /
+weather) inject a real scenario-engine disruption on the named road(s), which shows up as a
+purple-haloed road with traffic backing up. Honest limit: approving an incident does not yet
+apply its playbook to this twin -- the disruption just runs for 900 simulated seconds, then
+clears. Set `ATLAS_LIVE_TRAFFIC=0` to run without the live twin.
+
 **Kubernetes** (kind + Helm, verified against a real local cluster):
 `python scripts/kind_smoke_test.py` — installs the chart, runs a scripted demo scenario, then
 kills a pod and verifies the cluster self-heals.

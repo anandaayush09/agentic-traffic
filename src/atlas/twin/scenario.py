@@ -115,8 +115,18 @@ class ScenarioController:
 
     def __init__(self, env: SumoTwinEnv, specs: list[ScenarioSpec]) -> None:
         self._env = env
-        self._specs = specs
+        self._specs = list(specs)
         self._active: dict[str, _AppliedScenario] = {}
+
+    def add_spec(self, spec: ScenarioSpec) -> None:
+        """Registers a scenario after construction, for callers that learn about a
+        disruption while the twin is already running (the live-traffic service injects
+        one per submitted incident). It applies at the next `step()`/`sync()` once the
+        sim clock is inside its window. Names must be unique -- the controller keys its
+        applied-state bookkeeping by name, so a duplicate would silently shadow."""
+        if any(existing.name == spec.name for existing in self._specs):
+            raise ValueError(f"A scenario named '{spec.name}' is already registered")
+        self._specs.append(spec)
 
     def step(self, n: int = 1) -> None:
         for _ in range(n):

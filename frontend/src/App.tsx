@@ -7,14 +7,30 @@ import staticSnapshot from "./public_demo_snapshot.json";
 import {
   ApiError,
   approveIncident,
+  getTraffic,
+  getTrafficGeometry,
   listIncidents,
   rejectIncident,
   submitIncident,
   type Incident,
+  type TrafficEdgeGeometry,
+  type TrafficSnapshot,
 } from "./api";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 const POLL_INTERVAL_MS = 3000;
+// Traffic moves, so it is polled faster than the (slow-changing) incident queue.
+const TRAFFIC_POLL_INTERVAL_MS = 1000;
+
+// The demo buttons. Locations are corridor JUNCTION ids (the map keys incidents by
+// junction): the live twin applies an accident/closure to every road entering that
+// junction, so the effect is visible on the map. A sensor fault has no road effect.
+const DEMO_INCIDENTS = {
+  sensor_fault: { label: "Demo: sensor fault", junction: "42430333" },
+  accident: { label: "Demo: accident", junction: "42430342" },
+  closure: { label: "Demo: closure", junction: "42430338" },
+} as const;
+type DemoIncidentClass = keyof typeof DEMO_INCIDENTS;
 
 // The public read-only demo (docs/design/10_deployment.md: "zero control endpoints,
 // no bus, no LLM keys") is a SEPARATE build of this same app, not a config flag on
@@ -41,6 +57,9 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [roads, setRoads] = useState<TrafficEdgeGeometry[]>([]);
+  const [traffic, setTraffic] = useState<TrafficSnapshot | null>(null);
+  const [trafficUnavailable, setTrafficUnavailable] = useState(false);
 
   const refresh = useCallback(async () => {
     if (STATIC_DEMO) return; // nothing to poll -- the snapshot is loaded once, above
@@ -59,6 +78,37 @@ function App() {
     const timer = setInterval(refresh, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [refresh]);
+
+  // Live traffic is optional: if the API has no live twin (404) or is down, the map just
+  // shows an "unavailable" note -- it never raises the red error banner, which is for
+  // the incident workflow.
+  useEffect(() => {
+    if (STATIC_DEMO) return;
+    let cancelled = false;
+    let haveGeometry = false;
+    async function pollTraffic() {
+      try {
+        if (!haveGeometry) {
+          const geometry = await getTrafficGeometry(apiBaseUrl);
+          if (cancelled) return;
+          setRoads(geometry.edges);
+          haveGeometry = true;
+        }
+        const snapshot = await getTraffic(apiBaseUrl);
+        if (cancelled) return;
+        setTraffic(snapshot);
+        setTrafficUnavailable(false);
+      } catch {
+        if (!cancelled) setTrafficUnavailable(true);
+      }
+    }
+    pollTraffic();
+    const timer = setInterval(pollTraffic, TRAFFIC_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [apiBaseUrl]);
 
   const selected = incidents.find((i) => i.incident_id === selectedId) ?? null;
 
@@ -86,19 +136,19 @@ function App() {
     }
   }
 
-  async function handleSubmitDemoIncident() {
+  async function handleSubmitDemoIncident(incidentClass: DemoIncidentClass) {
     demoIncidentCounter += 1;
-    const incidentId = `demo-incident-${Date.now()}-${demoIncidentCounter}`;
+    const incidentId = `demo-${incidentClass}-${Date.now()}-${demoIncidentCounter}`;
     try {
       await submitIncident(apiBaseUrl, operatorToken, {
         incident_id: incidentId,
-        class: "sensor_fault",
+        class: incidentClass,
         status: "detected",
         confidence: 0.9,
         // Real manhattan_midtown corridor junction (matches MapView.tsx's
         // corridor_geometry.json), not a placeholder id -- the demo API server
         // (scripts/run_dashboard_demo_api.py) runs against this same real network.
-        location: { link_ids: ["42430333"] },
+        location: { link_ids: [DEMO_INCIDENTS[incidentClass].junction] },
       });
       await refresh();
       setSelectedId(incidentId);
@@ -133,9 +183,15 @@ function App() {
                 onChange={(e) => setOperatorToken(e.target.value)}
               />
             </label>
-            <button type="button" onClick={handleSubmitDemoIncident}>
-              Submit demo incident
-            </button>
+            {(Object.keys(DEMO_INCIDENTS) as DemoIncidentClass[]).map((incidentClass) => (
+              <button
+                key={incidentClass}
+                type="button"
+                onClick={() => handleSubmitDemoIncident(incidentClass)}
+              >
+                {DEMO_INCIDENTS[incidentClass].label}
+              </button>
+            ))}
           </div>
         )}
       </header>
@@ -143,7 +199,15 @@ function App() {
       {error && <div className="error-banner">{error}</div>}
 
       <main className="layout">
-        <MapView incidents={incidents} selectedId={selectedId} onSelectIncident={setSelectedId} />
+        <MapView
+          incidents={incidents}
+          selectedId={selectedId}
+          onSelectIncident={setSelectedId}
+          roads={STATIC_DEMO ? [] : roads}
+          traffic={STATIC_DEMO ? null : traffic}
+          trafficUnavailable={trafficUnavailable}
+          showTrafficOverlay={!STATIC_DEMO}
+        />
         <div className="sidebar">
           <section>
             <h2>Approval queue</h2>

@@ -116,6 +116,8 @@ def run_evaluation(duration_s: int, step_length_s: float = 1.0) -> None:
     raw_steps_per_window = int(AGGREGATION_WINDOW_S / step_length_s)
     accident_buf: list[float] = []
     unaffected_buf: list[float] = []
+    
+#changes were made
 
     try:
         for step in range(num_raw_steps):

@@ -15,6 +15,8 @@ export interface IncidentState {
   provider_used: string | null;
   what_if_checked: boolean;
   what_if_improved: boolean | null;
+  /** The simulated comparison behind `what_if_improved`; absent in older snapshots. */
+  what_if_detail?: { metric: string; baseline: number; proposed: number } | null;
   auto_applied: boolean;
   approved: boolean | null;
   status: string;
@@ -50,6 +52,40 @@ export interface TrafficDisruption {
   ends_at_sim_s: number;
 }
 
+export interface TrafficJunction {
+  /** The controller currently driving the junction. */
+  mode: string;
+  /** True while an applied playbook is overriding the operator-chosen mode. */
+  playbook_override: boolean;
+  phase: number;
+  /** Halted vehicles on the junction's approaches. */
+  queue: number;
+}
+
+export interface TrafficPlaybook {
+  incident_id: string;
+  playbook: string;
+  summary: string;
+  ends_at_sim_s: number;
+}
+
+/** Observed before/after queues around one applied playbook (one live run, not a
+ * controlled experiment -- the what-if tool is the controlled comparison). */
+export interface TrafficImpact {
+  incident_id: string;
+  playbook: string;
+  summary: string;
+  status: "measuring" | "complete" | "no_change" | "not_applied";
+  edge_ids: string[];
+  window_s: number;
+  elapsed_s: number;
+  before_halted: number | null;
+  after_halted: number | null;
+  before_speed_ratio: number | null;
+  after_speed_ratio: number | null;
+  halted_change_pct: number | null;
+}
+
 export interface TrafficSnapshot {
   ready: boolean;
   error: string | null;
@@ -59,7 +95,13 @@ export interface TrafficSnapshot {
   /** [lon, lat, speed_mps] per vehicle. */
   vehicles: [number, number, number][];
   disruptions: TrafficDisruption[];
+  junctions: Record<string, TrafficJunction>;
+  playbooks: TrafficPlaybook[];
+  impacts: Record<string, TrafficImpact>;
 }
+
+export const CONTROLLER_MODES = ["fixed_time", "actuated", "max_pressure"] as const;
+export type ControllerMode = (typeof CONTROLLER_MODES)[number];
 
 export class ApiError extends Error {
   status: number;
@@ -109,6 +151,19 @@ export function submitIncident(
     headers: authHeaders(token),
     body: JSON.stringify(incident),
   });
+}
+
+export function setJunctionMode(
+  baseUrl: string,
+  token: string,
+  tlsId: string,
+  mode: ControllerMode,
+): Promise<{ tls_id: string; mode: string }> {
+  return request<{ tls_id: string; mode: string }>(
+    baseUrl,
+    `/traffic/junctions/${encodeURIComponent(tlsId)}/mode`,
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify({ mode }) },
+  );
 }
 
 export function approveIncident(

@@ -228,6 +228,8 @@ class _FakeLiveTraffic:
 
     def __init__(self, apply_raises: bool = False) -> None:
         self.applied: list[dict[str, Any]] = []
+        self.playbooks: list[tuple[str, str, dict[str, object]]] = []
+        self.modes: dict[str, str] = {}
         self._apply_raises = apply_raises
 
     def geometry(self) -> list[dict[str, object]]:
@@ -241,6 +243,21 @@ class _FakeLiveTraffic:
             raise RuntimeError("live twin exploded")
         self.applied.append(dict(incident))
         return ["e1"]
+
+    def apply_playbook(
+        self, incident_id: str, playbook_name: str, params: Mapping[str, object]
+    ) -> bool:
+        if self._apply_raises:
+            raise RuntimeError("live twin exploded")
+        self.playbooks.append((incident_id, playbook_name, dict(params)))
+        return True
+
+    def set_junction_mode(self, tls_id: str, mode: str) -> None:
+        if tls_id != "J1":
+            raise KeyError(f"'{tls_id}' is not an ATLAS-controlled junction")
+        if mode not in ("fixed_time", "actuated", "max_pressure"):
+            raise ValueError(f"mode must be one of [...], got '{mode}'")
+        self.modes[tls_id] = mode
 
 
 class TestLiveTrafficEndpoints:
@@ -300,6 +317,100 @@ class TestLiveTrafficEndpoints:
 
         assert response.status_code == 201
         assert response.json()["pending_approval"] is True
+
+
+class TestLiveTwinPlaybookAndModeHooks:
+    def _client(self, live: _FakeLiveTraffic) -> tuple[TestClient, dict[str, str]]:
+        client = TestClient(create_app(_service(), SECRET, live_traffic=live))
+        token = create_operator_token("op-1", SECRET)
+        return client, {"Authorization": f"Bearer {token}"}
+
+    def test_an_auto_applied_playbook_is_applied_to_the_live_twin(self) -> None:
+        live = _FakeLiveTraffic()
+        client, auth = self._client(live)
+
+        with patch("atlas.cognitive.supervisor.run_what_if", return_value=AUTO_APPLY_RESULT):
+            client.post("/incidents", json=_incident("inc-auto"), headers=auth)
+
+        assert [(i, name) for i, name, _ in live.playbooks] == [
+            ("inc-auto", "switch_to_max_pressure")
+        ]
+
+    def test_a_paused_incident_does_not_touch_the_twin_until_approved(self) -> None:
+        live = _FakeLiveTraffic()
+        client, auth = self._client(live)
+
+        with patch("atlas.cognitive.supervisor.run_what_if", return_value=REQUEST_APPROVAL_RESULT):
+            client.post("/incidents", json=_incident("inc-wait", "accident"), headers=auth)
+            assert live.playbooks == []
+
+            response = client.post("/incidents/inc-wait/approve", headers=auth)
+
+        assert response.status_code == 200
+        assert [(i, name) for i, name, _ in live.playbooks] == [("inc-wait", "divert_arterial")]
+
+    def test_a_rejected_playbook_is_never_applied(self) -> None:
+        live = _FakeLiveTraffic()
+        client, auth = self._client(live)
+
+        with patch("atlas.cognitive.supervisor.run_what_if", return_value=REQUEST_APPROVAL_RESULT):
+            client.post("/incidents", json=_incident("inc-no", "accident"), headers=auth)
+            response = client.post("/incidents/inc-no/reject", headers=auth)
+
+        assert response.status_code == 200
+        assert live.playbooks == []
+
+    def test_a_failing_live_twin_does_not_fail_the_approval(self) -> None:
+        client, auth = self._client(_FakeLiveTraffic(apply_raises=True))
+
+        with patch("atlas.cognitive.supervisor.run_what_if", return_value=REQUEST_APPROVAL_RESULT):
+            client.post("/incidents", json=_incident("inc-boom2", "accident"), headers=auth)
+            response = client.post("/incidents/inc-boom2/approve", headers=auth)
+
+        assert response.status_code == 200
+        assert response.json()["state"]["status"] == "cleared"
+
+    def test_junction_mode_requires_a_token(self) -> None:
+        live = _FakeLiveTraffic()
+        client, _ = self._client(live)
+
+        response = client.post("/traffic/junctions/J1/mode", json={"mode": "actuated"})
+
+        assert response.status_code == 401
+        assert live.modes == {}
+
+    def test_junction_mode_is_set_for_an_operator(self) -> None:
+        live = _FakeLiveTraffic()
+        client, auth = self._client(live)
+
+        response = client.post(
+            "/traffic/junctions/J1/mode", json={"mode": "actuated"}, headers=auth
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"tls_id": "J1", "mode": "actuated"}
+        assert live.modes == {"J1": "actuated"}
+
+    def test_unknown_junction_is_404_and_bad_mode_is_422(self) -> None:
+        client, auth = self._client(_FakeLiveTraffic())
+
+        unknown = client.post("/traffic/junctions/J9/mode", json={"mode": "actuated"}, headers=auth)
+        bad_mode = client.post("/traffic/junctions/J1/mode", json={"mode": "rl"}, headers=auth)
+
+        assert unknown.status_code == 404
+        assert bad_mode.status_code == 422
+
+    def test_junction_mode_is_404_when_no_live_twin_is_attached(self) -> None:
+        client = TestClient(create_app(_service(), SECRET))
+        token = create_operator_token("op-1", SECRET)
+
+        response = client.post(
+            "/traffic/junctions/J1/mode",
+            json={"mode": "actuated"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404
 
 
 class TestRealSumoBackedVerification:

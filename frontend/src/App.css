@@ -252,3 +252,74 @@
   border-left: 3px solid #7b2cbf;
   border-radius: 3px;
 }
+
+.signal-control {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.signal-control li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+}
+
+.signal-control .junction-id {
+  font-family: ui-monospace, monospace;
+  color: #555;
+  min-width: 3.2rem;
+}
+
+.signal-control select {
+  flex: 1;
+  padding: 0.15rem 0.25rem;
+}
+
+.junction-queue {
+  color: #555;
+  white-space: nowrap;
+}
+
+.override-badge {
+  background: #f3e9fb;
+  color: #7b2cbf;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.7rem;
+}
+
+.what-if-evidence {
+  margin: 0.6rem 0 0;
+  padding: 0.4rem 0.5rem;
+  background: #eaf4ff;
+  border-left: 3px solid #337ab7;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
+.impact {
+  margin-top: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  background: #eef8ee;
+  border-left: 3px solid #5cb85c;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
+.impact h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+}
+
+.impact p {
+  margin: 0.2rem 0;
+}

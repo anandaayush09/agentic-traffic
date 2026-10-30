@@ -39,7 +39,7 @@ requires_network = pytest.mark.skipif(
 
 
 def _make_service(**overrides: Any) -> LiveTrafficService:
-    params: dict[str, Any] = {"warmup_s": 60, "sim_seconds_per_tick": 5}
+    params: dict[str, Any] = {"warmup_s": 60}
     params.update(overrides)
     return LiveTrafficService(NET_FILE, ROUTE_FILE, [VTYPES_FILE], **params)
 
@@ -231,6 +231,132 @@ class TestRealSimulation:
         edges: dict[str, dict[str, Any]] = running_service.snapshot()["edges"]  # type: ignore[assignment]
 
         assert edges["1117867028"]["vehicles"] == 0
+
+
+@pytest.fixture
+def control_service() -> Iterator[LiveTrafficService]:
+    service = _make_service(disruption_duration_s=600, impact_window_s=20.0)
+    service.start_simulation()
+    try:
+        yield service
+    finally:
+        service._close_simulation()
+
+
+def _snapshot_of(service: LiveTrafficService, key: str) -> Any:
+    return service.snapshot()[key]
+
+
+@requires_network
+class TestJunctionControl:
+    def test_snapshot_reports_every_atlas_controlled_junction(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        junctions = _snapshot_of(control_service, "junctions")
+
+        assert set(junctions) == {"42430333", "42430338", "42430342", "42430344", "42430347"}
+        assert {j["mode"] for j in junctions.values()} == {"fixed_time"}
+        assert all(j["queue"] >= 0 for j in junctions.values())
+
+    def test_set_junction_mode_takes_effect_on_the_next_tick(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        control_service.set_junction_mode(JUNCTION, "actuated")
+        control_service.tick()
+
+        assert _snapshot_of(control_service, "junctions")[JUNCTION]["mode"] == "actuated"
+
+    def test_the_chosen_mode_survives_a_simulation_restart(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        control_service.set_junction_mode(JUNCTION, "max_pressure")
+
+        control_service.start_simulation()
+
+        assert _snapshot_of(control_service, "junctions")[JUNCTION]["mode"] == "max_pressure"
+
+    def test_unknown_junction_and_unavailable_mode_are_rejected(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        with pytest.raises(KeyError):
+            control_service.set_junction_mode("42428283", "max_pressure")
+        with pytest.raises(ValueError, match="mode must be one of"):
+            control_service.set_junction_mode(JUNCTION, "rl")
+
+
+@requires_network
+class TestPlaybookApplicationAndImpact:
+    def test_applied_max_pressure_playbook_overrides_the_junction_and_is_listed(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        queued = control_service.apply_playbook(
+            "inc-mp", "switch_to_max_pressure", {"junction_ids": [JUNCTION]}
+        )
+        control_service.tick()
+
+        junction = _snapshot_of(control_service, "junctions")[JUNCTION]
+        playbooks = _snapshot_of(control_service, "playbooks")
+        assert queued is True
+        assert (junction["mode"], junction["playbook_override"]) == ("max_pressure", True)
+        assert [p["incident_id"] for p in playbooks] == ["inc-mp"]
+
+    def test_impact_is_measured_before_and_after_then_completes(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        control_service.apply_playbook(
+            "inc-mp", "switch_to_max_pressure", {"junction_ids": [JUNCTION]}
+        )
+        control_service.tick()
+        measuring = _snapshot_of(control_service, "impacts")["inc-mp"]
+        assert measuring["status"] == "measuring"
+        assert measuring["before_halted"] is not None
+
+        for _ in range(6):  # 6 ticks x 5 s = 30 s > the 20 s window
+            control_service.tick()
+        done = _snapshot_of(control_service, "impacts")["inc-mp"]
+
+        assert done["status"] == "complete"
+        assert done["after_halted"] is not None
+        assert done["playbook"] == "switch_to_max_pressure"
+        assert done["edge_ids"]
+
+    def test_divert_is_applied_to_the_roads_it_names(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        control_service.apply_playbook(
+            "inc-div",
+            "divert_arterial",
+            {"from_edge": JUNCTION, "to_edge": JUNCTION, "duration_s": 600.0},
+        )
+        control_service.tick()
+
+        impact = _snapshot_of(control_service, "impacts")["inc-div"]
+        assert set(impact["edge_ids"]) == JUNCTION_INCOMING
+
+    def test_playbook_the_twin_cannot_model_is_reported_not_applied(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        control_service.apply_playbook("inc-bus", "bus_bridge", {"route_id": "r1"})
+        control_service.tick()
+
+        impact = _snapshot_of(control_service, "impacts")["inc-bus"]
+        assert impact["status"] == "not_applied"
+        assert _snapshot_of(control_service, "playbooks") == []
+
+    def test_hold_current_plan_changes_nothing(self, control_service: LiveTrafficService) -> None:
+        control_service.apply_playbook("inc-hold", "hold_current_plan", {"reason": "r"})
+        control_service.tick()
+
+        assert _snapshot_of(control_service, "impacts")["inc-hold"]["status"] == "no_change"
+        assert _snapshot_of(control_service, "playbooks") == []
+
+    def test_a_response_is_applied_at_most_once_per_incident(
+        self, control_service: LiveTrafficService
+    ) -> None:
+        first = control_service.apply_playbook("inc-1", "hold_current_plan", {"reason": "r"})
+        second = control_service.apply_playbook("inc-1", "hold_current_plan", {"reason": "r"})
+
+        assert (first, second) == (True, False)
 
 
 @requires_network

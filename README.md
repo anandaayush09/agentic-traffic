@@ -152,14 +152,26 @@ python scripts/run_evaluation_pilot.py
 python scripts/run_dashboard_demo_api.py   # then: cd frontend && npm install && npm run dev
 ```
 
-The dashboard map shows **live traffic from the real digital twin**: `run_dashboard_demo_api.py`
-runs the Manhattan SUMO network in the background ([`live_traffic.py`](src/atlas/services/live_traffic.py)),
-roads are coloured by speed vs. limit, and every vehicle is a dot. The `Demo: accident` /
-`Demo: closure` buttons (or `POST /incidents` with `class` = accident / closure / construction /
-weather) inject a real scenario-engine disruption on the named road(s), which shows up as a
-purple-haloed road with traffic backing up. Honest limit: approving an incident does not yet
-apply its playbook to this twin -- the disruption just runs for 900 simulated seconds, then
-clears. Set `ATLAS_LIVE_TRAFFIC=0` to run without the live twin.
+The dashboard is wired to a **live, closed-loop digital twin** (`run_dashboard_demo_api.py` runs the
+Manhattan SUMO network in the background -- [`live_traffic.py`](src/atlas/services/live_traffic.py)
+on the shared [`controlled_twin.py`](src/atlas/twin/controlled_twin.py)):
+
+- **Map:** roads coloured by speed vs. limit, every vehicle a dot, disrupted roads haloed.
+- **Signal control:** ATLAS controllers (fixed-time / actuated / max-pressure, through the safety
+  shield) drive the 5 corridor junctions; switch any one from the *Signal control* panel
+  (needs an operator token). The other 17 signals keep SUMO's native plans.
+- **Incidents disrupt real roads:** `Demo: accident` / `Demo: closure` (or `POST /incidents` with
+  `class` = accident / closure / construction / weather) inject a scenario-engine disruption.
+- **Responses are simulated, then applied:** for `divert_arterial` and `meter_upstream` the what-if
+  tool runs the incident on the real network with and without the playbook (same seed) and shows
+  the numbers. Approving applies the playbook to the live twin (`atlas.twin.playbook_effects`);
+  the dashboard then reports the *observed* queue change on the affected roads. Rerouting still
+  asks a human even when it helps -- only mode changes and no-ops auto-apply.
+
+Honest limits: `weather_capacity_derate` and `bus_bridge` have no defensible simulation, so they stay
+unchecked; `meter_upstream` is modelled as max-pressure on the upstream junctions (its numeric `rate`
+is not enforced); the live "observed impact" is one non-stationary run, not a controlled test (the
+what-if comparison is the controlled one). Set `ATLAS_LIVE_TRAFFIC=0` to run without the live twin.
 
 **Kubernetes** (kind + Helm, verified against a real local cluster):
 `python scripts/kind_smoke_test.py` — installs the chart, runs a scripted demo scenario, then

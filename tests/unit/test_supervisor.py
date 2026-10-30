@@ -187,3 +187,84 @@ class TestProposalCarriesRealPlaybookDefaults:
         assert "__interrupt__" not in result
         assert result["proposal"]["playbook_name"] == "hold_current_plan"
         assert result["status"] == "cleared"
+
+
+class TestAutoApplyEligibility:
+    """A playbook that was simulated AND improved things only auto-applies if it is one
+    of the low-impact ones (a controller-mode change or a no-op). Rerouting traffic can
+    be shown to help, but it still goes to a human -- with the evidence attached."""
+
+    def test_checked_and_improved_reroute_still_asks_a_human(self) -> None:
+        patcher, graph = _graph_with_fake_what_if(
+            WhatIfResult(
+                checked=True,
+                improved=True,
+                baseline_mean_pressure=70.0,
+                proposed_mean_pressure=55.0,
+                metric="mean_halted_vehicles",
+            )
+        )
+        with patcher:
+            paused = graph.invoke(
+                initial_state(_incident("accident")),
+                config={"configurable": {"thread_id": "t-elig-1"}},
+            )
+
+        assert paused["proposal"]["playbook_name"] == "divert_arterial"
+        assert paused["auto_applied"] is False
+        interrupt_payload = paused["__interrupt__"][0].value
+        assert interrupt_payload["what_if_checked"] is True
+        assert interrupt_payload["what_if_improved"] is True
+
+    def test_the_simulated_evidence_is_carried_in_state_and_the_interrupt(self) -> None:
+        patcher, graph = _graph_with_fake_what_if(
+            WhatIfResult(
+                checked=True,
+                improved=True,
+                baseline_mean_pressure=70.0,
+                proposed_mean_pressure=55.0,
+                metric="mean_halted_vehicles",
+            )
+        )
+        expected = {"metric": "mean_halted_vehicles", "baseline": 70.0, "proposed": 55.0}
+        with patcher:
+            paused = graph.invoke(
+                initial_state(_incident("accident")),
+                config={"configurable": {"thread_id": "t-elig-2"}},
+            )
+
+        assert paused["what_if_detail"] == expected
+        assert paused["__interrupt__"][0].value["what_if_detail"] == expected
+
+    def test_unchecked_what_if_has_no_detail(self) -> None:
+        patcher, graph = _graph_with_fake_what_if(
+            WhatIfResult(
+                checked=False,
+                improved=None,
+                baseline_mean_pressure=None,
+                proposed_mean_pressure=None,
+            )
+        )
+        with patcher:
+            paused = graph.invoke(
+                initial_state(_incident("weather")),
+                config={"configurable": {"thread_id": "t-elig-3"}},
+            )
+
+        assert paused["what_if_detail"] is None
+
+    def test_the_incident_is_handed_to_the_what_if_tool(self) -> None:
+        registry = PlaybookRegistry()
+        graph = build_supervisor_graph(
+            ProviderChain([]), registry, DUMMY_PATH, DUMMY_PATH, InMemorySaver()
+        )
+        unchecked = WhatIfResult(
+            checked=False, improved=None, baseline_mean_pressure=None, proposed_mean_pressure=None
+        )
+        with patch("atlas.cognitive.supervisor.run_what_if", return_value=unchecked) as mock:
+            graph.invoke(
+                initial_state(_incident("accident")),
+                config={"configurable": {"thread_id": "t-elig-4"}},
+            )
+
+        assert mock.call_args.kwargs["incident"]["class"] == "accident"

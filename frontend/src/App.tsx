@@ -3,6 +3,7 @@ import "./App.css";
 import { MapView } from "./MapView";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { XaiPanel } from "./XaiPanel";
+import { SignalControl } from "./SignalControl";
 import staticSnapshot from "./public_demo_snapshot.json";
 import {
   ApiError,
@@ -11,7 +12,9 @@ import {
   getTrafficGeometry,
   listIncidents,
   rejectIncident,
+  setJunctionMode,
   submitIncident,
+  type ControllerMode,
   type Incident,
   type TrafficEdgeGeometry,
   type TrafficSnapshot,
@@ -136,6 +139,19 @@ function App() {
     }
   }
 
+  async function handleSetMode(tlsId: string, mode: ControllerMode) {
+    setBusyId(tlsId);
+    try {
+      await setJunctionMode(apiBaseUrl, operatorToken, tlsId, mode);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? `Mode change failed (${err.status}): ${err.message}` : String(err),
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleSubmitDemoIncident(incidentClass: DemoIncidentClass) {
     demoIncidentCounter += 1;
     const incidentId = `demo-${incidentClass}-${Date.now()}-${demoIncidentCounter}`;
@@ -221,9 +237,23 @@ function App() {
               readOnly={STATIC_DEMO}
             />
           </section>
+          {!STATIC_DEMO && (
+            <section>
+              <h2>Signal control</h2>
+              <SignalControl
+                junctions={traffic?.junctions}
+                canControl={operatorToken.length > 0}
+                busyId={busyId}
+                onSetMode={handleSetMode}
+              />
+            </section>
+          )}
           <section>
             <h2>Explanation (XAI panel)</h2>
-            <XaiPanel incident={selected} />
+            <XaiPanel
+              incident={selected}
+              impact={selected ? (traffic?.impacts?.[selected.incident_id] ?? null) : null}
+            />
           </section>
           <section>
             <h2>Replay scrubber</h2>

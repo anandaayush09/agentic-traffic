@@ -35,6 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
+from pydantic import BaseModel
 
 from atlas.cognitive.supervisor import SupervisorState, initial_state
 from atlas.common.logging import get_logger
@@ -51,6 +52,14 @@ class LiveTraffic(Protocol):
     def geometry(self) -> list[dict[str, object]]: ...
     def snapshot(self) -> dict[str, object]: ...
     def apply_incident(self, incident: Mapping[str, object]) -> list[str]: ...
+    def apply_playbook(
+        self, incident_id: str, playbook_name: str, params: Mapping[str, object]
+    ) -> bool: ...
+    def set_junction_mode(self, tls_id: str, mode: str) -> None: ...
+
+
+class JunctionModeUpdate(BaseModel):
+    mode: str
 
 
 class IncidentNotFoundError(KeyError):
@@ -169,6 +178,40 @@ def create_app(
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Live traffic is not enabled")
         return live_traffic.snapshot()
 
+    @app.post("/traffic/junctions/{tls_id}/mode")
+    def set_junction_mode(
+        tls_id: str,
+        update: JunctionModeUpdate,
+        _claims: dict[str, object] = Depends(require_jwt),  # noqa: B008
+    ) -> dict[str, str]:
+        if live_traffic is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Live traffic is not enabled")
+        try:
+            live_traffic.set_junction_mode(tls_id, update.mode)
+        except KeyError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc.args[0])) from exc
+        except ValueError as exc:
+            raise HTTPException(422, detail=str(exc)) from exc
+        return {"tls_id": tls_id, "mode": update.mode}
+
+    def apply_playbook_to_live_twin(incident: dict[str, Any]) -> None:
+        """Puts an applied playbook (auto-applied, or approved by an operator) into the
+        live twin. Like the disruption hook, a live-twin problem must never fail the
+        request: the decision itself is already recorded."""
+        if live_traffic is None:
+            return
+        proposal = incident["state"].get("proposal")
+        if not proposal:
+            return
+        try:
+            live_traffic.apply_playbook(
+                str(incident["incident_id"]),
+                str(proposal["playbook_name"]),
+                proposal["params"],
+            )
+        except Exception:
+            logger.exception("cognitive_api.live_traffic_playbook_failed")
+
     @app.get("/incidents")
     def list_incidents() -> list[dict[str, Any]]:
         return service.list_incidents()
@@ -194,6 +237,8 @@ def create_app(
                 live_traffic.apply_incident(incident)
             except Exception:
                 logger.exception("cognitive_api.live_traffic_apply_failed")
+            if result["state"].get("auto_applied"):
+                apply_playbook_to_live_twin(result)
         return result
 
     @app.post("/incidents/{incident_id}/approve")
@@ -202,7 +247,9 @@ def create_app(
         _claims: dict[str, object] = Depends(require_jwt),  # noqa: B008
     ) -> dict[str, Any]:
         try:
-            return service.resolve_approval(incident_id, approved=True)
+            result = service.resolve_approval(incident_id, approved=True)
+            apply_playbook_to_live_twin(result)
+            return result
         except IncidentNotFoundError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         except ApprovalNotPendingError as exc:

@@ -37,7 +37,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from atlas.cognitive.playbooks import PlaybookProposal, PlaybookRegistry
-from atlas.cognitive.provider_chain import ProviderChain
+from atlas.cognitive.provider_chain import ProposalSource
 from atlas.cognitive.what_if import WhatIfResult, run_what_if
 from atlas.common.logging import get_logger
 
@@ -62,7 +62,7 @@ class SupervisorState(TypedDict):
 
 
 def build_supervisor_graph(
-    provider_chain: ProviderChain,
+    provider_chain: ProposalSource,
     registry: PlaybookRegistry,
     net_file: Path,
     route_file: Path,

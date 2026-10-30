@@ -47,6 +47,9 @@ dependencies = [
     # statistical protocol (docs/design/11_evaluation.md section 11.3: Welch's
     # t-test, t-distribution confidence intervals).
     "scipy>=1.14,<2",
+    # Shared, atomic LLM rate-limit counters + provider health (atlas.cognitive.llm).
+    # Pure Python (no native surface, unlike this project's earlier DLL collisions).
+    "redis>=5.2,<8",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +61,7 @@ dev = [
     "types-pyyaml>=6.0,<7",
     "hypothesis>=6.100,<7",
     "httpx>=0.27,<1", # FastAPI's own TestClient dependency
+    "fakeredis>=2.26,<3", # tests the Redis-backed rate-limit store with no server
     # Only for scripts/export_corridor_geometry.py: sumolib's convertXY2LonLat needs
     # pyproj to invert the network's UTM projection back to lon/lat for the frontend
     # map. A standalone wheel (bundles its own PROJ build, no shared native surface

@@ -94,7 +94,7 @@ Other measured, reproducible results:
 
 ## What isn't done, said plainly
 
-Two things, both requiring resources this development environment doesn't have — not silently
+Two things, both requiring resources this development environment didn't have — not silently
 assumed complete, not worked around, just genuinely blocked:
 
 1. **No MAPPO checkpoint has been trained to real convergence.** The from-scratch MAPPO
@@ -104,13 +104,15 @@ assumed complete, not worked around, just genuinely blocked:
    multi-day Colab/Kaggle GPU session the design's own throughput math calls for — a resource
    this session never had. RL is therefore absent (not weakened) from every evaluation number
    above; `mode="rl"` fails loudly rather than silently evaluating an under-trained policy.
-2. **No real LLM provider is wired up**, not even the free local-first Ollama fallback the
-   design's own descope plan names. The `ProviderChain`'s fallback logic
-   ([ADR-0010](docs/adr/0010-llm-provider-chain-with-deterministic-terminal-fallback.md)) is
-   fully built and tested; every incident in this build is handled by its deterministic
-   terminal fallback, measured at 100% playbook accuracy / grounding / parameter sanity on
-   the 10-incident scripted suite — a real result, but one that validates the fallback's
-   curated defaults, not LLM reasoning quality.
+2. **No LLM result has been measured against a live key.** Real Groq and Gemini providers now
+   exist with quota-aware routing and Redis-shared limits
+   ([ADR-0014](docs/adr/0014-quota-aware-llm-routing-with-redis-shared-limits.md)), and are tested
+   end to end against mocked HTTP and the real simulation -- but this repo has never been run
+   with real API keys, so the providers' live behaviour and the LLM's playbook quality versus the
+   deterministic mapper (100% accuracy / grounding / parameter sanity on the 10-incident suite,
+   which validates the curated defaults, not LLM reasoning) are still unmeasured.
+   `scripts/check_llm_providers.py` and `scripts/eval_scripted_incidents.py --llm` are how to
+   close that gap once keys are set.
 
 The full, precise reconciliation of these two gaps against the original risk register is
 [ADR-0013](docs/adr/0013-r1-r2-r4-descope-outcomes.md). Everything else in the frozen
@@ -167,6 +169,16 @@ on the shared [`controlled_twin.py`](src/atlas/twin/controlled_twin.py)):
   the numbers. Approving applies the playbook to the live twin (`atlas.twin.playbook_effects`);
   the dashboard then reports the *observed* queue change on the affected roads. Rerouting still
   asks a human even when it helps -- only mode changes and no-ops auto-apply.
+
+**LLM proposals (optional).** Put `GROQ_API_KEY` and/or `GEMINI_API_KEY` in a local `.env`
+(gitignored; see `.env.example`) and the Supervisor's playbook proposals come from those models
+instead of the lookup table. Per incident, [`AdaptiveProviderChain`](src/atlas/cognitive/llm/router.py)
+picks the provider with the most quota headroom and best health, with per-minute/day counters and
+cooldowns shared through Redis (`docker compose up -d redis`; in-memory fallback if it's down). The model only
+*proposes*: replies are schema-, grounding- and sanity-checked, then simulated, and disruptive
+playbooks still need a human ([ADR-0014](docs/adr/0014-quota-aware-llm-routing-with-redis-shared-limits.md)).
+`python scripts/check_llm_providers.py` makes one real call per configured provider;
+`python scripts/eval_scripted_incidents.py --llm` scores them on the 10-incident suite.
 
 Honest limits: `weather_capacity_derate` and `bus_bridge` have no defensible simulation, so they stay
 unchecked; `meter_upstream` is modelled as max-pressure on the upstream junctions (its numeric `rate`

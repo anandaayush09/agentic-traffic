@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from atlas.cognitive.playbooks import PlaybookProposal, PlaybookRegistry
-from atlas.cognitive.provider_chain import ProviderChain
+from atlas.cognitive.provider_chain import ProposalSource
 
 # Real ids reused from scripts/eval_emergency_preemption.py, scripts/eval_anomaly_detection.py,
 # and scripts/train_mappo_corridor.py -- not fabricated for this suite.
@@ -282,7 +282,7 @@ def score_incident(
     )
 
 
-def run_suite(chain: ProviderChain, registry: PlaybookRegistry) -> SuiteSummary:
+def run_suite(chain: ProposalSource, registry: PlaybookRegistry) -> SuiteSummary:
     scores: list[IncidentScore] = []
     for scripted in SCRIPTED_INCIDENTS:
         proposal, provider_used = chain.propose(scripted.incident, registry.names())

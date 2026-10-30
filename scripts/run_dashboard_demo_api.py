@@ -5,6 +5,9 @@ wired to a real compiled Supervisor graph against the real manhattan_midtown cor
 not a mock server. Prints a ready-made operator JWT so the dashboard's "Operator token"
 field has something real to paste in immediately.
 
+Uses real LLM providers for playbook proposals when GROQ_API_KEY and/or GEMINI_API_KEY
+are set (see atlas.cognitive.llm); otherwise proposals come from the deterministic mapper.
+
 Also starts the live digital twin (atlas.services.live_traffic) so the dashboard map
 shows real simulated traffic, and so submitted accident/closure/construction/weather
 incidents visibly disrupt the roads they name. Set ATLAS_LIVE_TRAFFIC=0 to run without
@@ -28,8 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import uvicorn  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 
+from atlas.cognitive.llm import build_llm_chain  # noqa: E402
 from atlas.cognitive.playbooks import PlaybookRegistry  # noqa: E402
-from atlas.cognitive.provider_chain import ProviderChain  # noqa: E402
 from atlas.cognitive.supervisor import build_supervisor_graph  # noqa: E402
 from atlas.common.config import project_root  # noqa: E402
 from atlas.services.auth import create_operator_token  # noqa: E402
@@ -79,7 +82,13 @@ def main() -> None:
     vtypes_file = network_dir / "vtypes.add.xml"
 
     registry = PlaybookRegistry()
-    chain = ProviderChain([])  # no LLM providers -- deterministic mapper fallback
+    # Groq / Gemini if their keys are set (GROQ_API_KEY / GEMINI_API_KEY, e.g. in .env),
+    # ranked per incident by live quota + health with Redis-shared limits; otherwise just
+    # the deterministic mapper. Never prints a key.
+    llm = build_llm_chain(registry=registry)
+    for note in llm.notes:
+        print(note)
+    chain = llm.chain
     graph = build_supervisor_graph(
         chain,
         registry,

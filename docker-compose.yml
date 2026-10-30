@@ -49,6 +49,21 @@ services:
       retries: 10
     profiles: ["core", "full"]
 
+  # Shared LLM rate-limit counters + provider health (atlas.cognitive.llm). Optional: the
+  # code falls back to per-process in-memory counters when Redis is unreachable.
+  # Start just this one with:  docker compose up -d redis
+  redis:
+    image: redis:7-alpine
+    container_name: atlas-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles: ["core", "full", "llm"]
+
   intersection_agent:
     build: .
     container_name: atlas-intersection-agent

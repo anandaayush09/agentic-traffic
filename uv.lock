@@ -70,6 +70,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "pyyaml" },
     { name = "ray" },
+    { name = "redis" },
     { name = "scipy" },
     { name = "stable-baselines3" },
     { name = "structlog" },
@@ -82,6 +83,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "fakeredis" },
     { name = "httpx" },
     { name = "hypothesis" },
     { name = "mypy" },
@@ -100,6 +102,7 @@ perception = [
 [package.metadata]
 requires-dist = [
     { name = "eclipse-sumo", specifier = "==1.27.1" },
+    { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26,<3" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "gymnasium", specifier = ">=0.29,<1.1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
@@ -120,6 +123,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0,<8" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "ray", specifier = ">=2.40,<3" },
+    { name = "redis", specifier = ">=5.2,<8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15,<1" },
     { name = "scipy", specifier = ">=1.14,<2" },
     { name = "stable-baselines3", specifier = ">=2.3,<3" },
@@ -404,6 +408,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/31/ff/ac71562ad6dade48642c475c80d2c159ec7a83907e8ab9bb2d2f7fb59bda/eclipse_sumo-1.27.1-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:4b56e8bb331bee39d5a102feda7b3441fdfca4704a9ba4f7ed2cdf99ac19d915", size = 126468252, upload-time = "2026-06-25T09:48:15.001Z" },
     { url = "https://files.pythonhosted.org/packages/ba/13/401d9a7f8dbd404c7ec9cef95a7762a38d71088c38bf964789bc012428ce/eclipse_sumo-1.27.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:fd96ace26bccb78312c8c04464c0894a5432db8e2c072388b73e8ae3a6a43586", size = 147105795, upload-time = "2026-06-25T09:48:22.856Z" },
     { url = "https://files.pythonhosted.org/packages/d7/c4/f12aa67ed92aae1b52de68c4dd73398119c16a2e4921050161d829bc8566/eclipse_sumo-1.27.1-py3-none-win_amd64.whl", hash = "sha256:80f68e916d10696a677a60db81f13d5340efae9451eaa8f3088e67e89870d6aa", size = 165702015, upload-time = "2026-06-25T09:48:30.96Z" },
+]
+
+[[package]]
+name = "fakeredis"
+version = "2.40.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "redis" },
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/61/d0/8cbd1339c2a606a0ceda74e1a181248d372bb2c66bc6cf9d954871839ff9/fakeredis-2.40.0.tar.gz", hash = "sha256:16eb05a3e97c37a033c73d1da7e885eb2aa47ba7604cc377144339efa2780a02", size = 332674, upload-time = "2026-10-14T12:46:01.851Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/e4/6919d3653d72c53d1fb22c97ceb6fa3664cad302994e90ee52279f7eb394/fakeredis-2.40.0-py3-none-any.whl", hash = "sha256:b155ef2442134372eb1cc5664cf5638ccbe0a6dde9d1942153708e2782f315c9", size = 204148, upload-time = "2026-10-14T12:46:00.014Z" },
 ]
 
 [[package]]
@@ -1803,6 +1820,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ea/fd/c61c335990deb55215c5ed6ebaf59400c95d0b247276acb9f04d715f6d8c/ray-2.58.0-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:62f2f17a4d50150969dcf0a4ccbdafbdafa87d6be225ee1208a7b56bd373a37c", size = 77382773, upload-time = "2026-08-23T04:46:36.926Z" },
     { url = "https://files.pythonhosted.org/packages/21/7d/414e1f271bd5f849fbdb4e8646d23c2897719b0c0399a626c73a3815e2ef/ray-2.58.0-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:1e20c4a8d2563d9580e78f7c15297a9f8afe92401b698bceb4106c34b30c01c6", size = 78389778, upload-time = "2026-08-23T04:46:42.169Z" },
     { url = "https://files.pythonhosted.org/packages/a0/19/0682c7e47979411383bbfee774815021b522be7b66a655f4eef2a4313109/ray-2.58.0-cp312-cp312-win_amd64.whl", hash = "sha256:d49ff40e28bafeae29eed8118ce4269a56589e3952268059fb57e60c8721df86", size = 28942354, upload-time = "2026-08-23T04:46:46.529Z" },
+]
+
+[[package]]
+name = "redis"
+version = "7.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/51/93/05e7d4a65285066a74f48697f9b9cde5cfce71398033d69ed83c3d98f5c9/redis-7.4.1.tar.gz", hash = "sha256:1a1df5067062cf7cbe677994e391f8ee0840f499d370f1a71266e0dd3aa9308e", size = 4945742, upload-time = "2026-06-05T09:10:06.703Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/2e/2677f3f93dae0497e7e33b6637302e7f3744efc553f34231183e32584885/redis-7.4.1-py3-none-any.whl", hash = "sha256:1fa4647af1c5e93a2c685aa248ee44cce092691146d41390518dabe9a99839b0", size = 410171, upload-time = "2026-06-05T09:10:05.128Z" },
 ]
 
 [[package]]

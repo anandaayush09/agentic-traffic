@@ -5,7 +5,7 @@
 # ATLAS_API_BASE_URL environment variable when the container starts, so the SAME image is promoted
 # from staging to production with a different address in each:
 #   docker run -p 8080:8080 -e ATLAS_API_BASE_URL=https://api.example.com atlas-web
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 # Dependencies first so this layer only rebuilds when the lockfile changes. `npm ci` installs
 # exactly package-lock.json (and fails if it disagrees with package.json) -- unlike `npm install`.

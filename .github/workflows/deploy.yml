@@ -71,7 +71,7 @@ jobs:
       HOOK_API: ${{ secrets.DEPLOY_HOOK_API }}
       HOOK_WEB: ${{ secrets.DEPLOY_HOOK_WEB }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Only immutable commit tags may be deployed. `latest`/`main` move; "what is running?" would
       # become unanswerable and a rollback would not return to a known state.

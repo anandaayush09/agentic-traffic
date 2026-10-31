@@ -5,6 +5,7 @@ architecture, this is NOT RLlib -- see network.py's module docstring for why.
 
 from atlas.marl.buffer import RolloutBuffer
 from atlas.marl.network import ActorCritic, build_action_mask
+from atlas.marl.policy_io import LoadedPolicy, check_policy_fits, load_policy
 from atlas.marl.ppo import PPOConfig, PPOTrainer, PPOUpdateStats
 from atlas.marl.training import (
     RunningRewardNormalizer,
@@ -17,6 +18,9 @@ from atlas.marl.training import (
 
 __all__ = [
     "ActorCritic",
+    "LoadedPolicy",
+    "check_policy_fits",
+    "load_policy",
     "build_action_mask",
     "RolloutBuffer",
     "PPOConfig",

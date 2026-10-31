@@ -8,19 +8,23 @@ tuples -- this module intentionally does NOT itself orchestrate that scale (a ni
 background sweep script is a separate, later concern once this is verified correct on
 a handful of real cells).
 
-Scope note: `mode="rl"` is NOT wired into this runner (it would need a trained
-checkpoint path + observation-building, and `select_action_for_mode` requires a
-loaded `ActorCritic` + real observations neither of which this function currently
-constructs) -- same honest stance `scripts/eval_smoke_suite.py` already takes for the
-identical reason (Week 6: "no converged MAPPO artifact exists yet"). Calling this with
-mode="rl" raises the same `ValueError` `select_action_for_mode` already raises for a
-missing net/obs, not a silent no-op.
+`mode="rl"` runs a trained MAPPO policy: pass `policy=` (a `LoadedPolicy` from
+`atlas.marl.load_policy`) and each junction's action is the policy's deterministic choice
+from that junction's live observation, through the same safety shield as every other
+controller. Without a `policy`, mode="rl" raises the `ValueError` `select_action_for_mode`
+raises for a missing net/obs -- never a silent no-op, and never an evaluation of an
+untrained network by accident. Loading a checkpoint does not make it good: a number from
+this runner is only as meaningful as the training behind the checkpoint.
 """
 
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from pathlib import Path
+
+import numpy as np
+import torch
 
 from atlas.control.actuated import ActuatedConfig
 from atlas.control.fixed_time import native_green_durations_from_net_file
@@ -32,6 +36,7 @@ from atlas.evaluation.metrics import (
     compute_traffic_metrics,
     parse_tripinfo,
 )
+from atlas.marl.policy_io import LoadedPolicy, check_policy_fits
 from atlas.rl.multi_agent_env import MultiAgentSignalEnv, MultiAgentSignalEnvConfig
 from atlas.services.decision import AgentMode, select_action_for_mode
 from atlas.twin.env import TwinEnvConfig
@@ -53,6 +58,12 @@ def run_scenario_cell(
     max_lanes: int = 10,
     max_green_phases: int = 2,
     detector_dropout_rate: float = 0.0,
+    policy: LoadedPolicy | None = None,
+    programs: Mapping[str, MaxPressureProgram] | None = None,
+    native_durations: Mapping[str, tuple[tuple[int, ...], tuple[float, ...]]] | None = None,
+    time_to_teleport_s: float = -1,
+    scale: float = 1.0,
+    queue_sample_every: int = 1,
 ) -> TrafficMetrics:
     """Runs `num_decisions` decision cycles (each `decision_interval_s` real
     simulation seconds) of `mode` controlling every junction in `tls_ids` at once,
@@ -65,16 +76,26 @@ def run_scenario_cell(
     `queue_lengths` reading before it's used for a decision -- `fixed_time` is
     unaffected by construction (it never reads queue_lengths at all), which is
     itself the honest, expected result for that mode, not a bug in the sweep.
+
+    City-scale options (defaults reproduce the district exactly): `programs` /
+    `native_durations` are prebuilt per-junction structures (`NetworkSignalIndex`) -- without them
+    each junction re-parses the whole network file, hours at borough scale; `time_to_teleport_s`
+    and `scale` are passed to SUMO; `queue_sample_every=N` samples queue lengths on every Nth
+    decision only, which keeps the sample list small when thousands of junctions are controlled.
     """
     fault_model = (
         SensorFaultModel(dropout_rate=detector_dropout_rate, rng=random.Random(seed))
         if detector_dropout_rate > 0.0
         else None
     )
-    programs = {tls_id: MaxPressureProgram.from_net_file(tls_id, net_file) for tls_id in tls_ids}
-    native_durations = {
-        tls_id: native_green_durations_from_net_file(tls_id, net_file) for tls_id in tls_ids
-    }
+    if programs is None:
+        programs = {
+            tls_id: MaxPressureProgram.from_net_file(tls_id, net_file) for tls_id in tls_ids
+        }
+    if native_durations is None:
+        native_durations = {
+            tls_id: native_green_durations_from_net_file(tls_id, net_file) for tls_id in tls_ids
+        }
 
     env = MultiAgentSignalEnv(
         MultiAgentSignalEnvConfig(
@@ -84,13 +105,16 @@ def run_scenario_cell(
                 route_file=route_file,
                 additional_files=additional_files or [],
                 tripinfo_output=tripinfo_output,
+                time_to_teleport_s=time_to_teleport_s,
+                scale=scale,
             ),
             tls_ids=tls_ids,
             max_lanes=max_lanes,
             max_green_phases=max_green_phases,
             shield_config=ShieldConfig(min_green_s=10.0, max_green_s=60.0),
             decision_interval_s=decision_interval_s,
-        )
+        ),
+        programs=programs,
     )
     scenario_controller = (
         # ScenarioController's own type hint says SumoTwinEnv (its `step()` method
@@ -104,13 +128,16 @@ def run_scenario_cell(
         else None
     )
 
+    if policy is not None:
+        check_policy_fits(policy, env.observation_dim, env.action_dim)
     env.reset(seed=seed)
     last_actions = dict.fromkeys(tls_ids, 0)
     elapsed_in_phase_s = dict.fromkeys(tls_ids, 0.0)
     queue_sampler = QueueSampler()
 
     try:
-        for _ in range(num_decisions):
+        for decision in range(num_decisions):
+            sample_queues = decision % queue_sample_every == 0
             if scenario_controller is not None:
                 scenario_controller.sync()
 
@@ -124,16 +151,24 @@ def run_scenario_cell(
                 queue_lengths = {
                     lane_id: int(conn.lane.getLastStepHaltingNumber(lane_id)) for lane_id in lanes
                 }
-                queue_sampler.sample(conn, list(lanes))  # the real, un-faulted ground
+                if sample_queues:
+                    queue_sampler.sample(conn, list(lanes))  # the real, un-faulted ground
                 # truth -- this measures actual network state, not what a degraded
                 # controller believes; only the decision below sees the fault.
                 controller_queue_lengths = (
                     fault_model.apply(queue_lengths) if fault_model is not None else queue_lengths
                 )
 
+                rl_obs = (
+                    torch.from_numpy(np.asarray(env.observe(tls_id), dtype=np.float32))
+                    if mode == "rl" and policy is not None
+                    else None
+                )
                 action = select_action_for_mode(
                     mode,
                     program,
+                    net=policy.net if policy is not None else None,
+                    obs=rl_obs,
                     queue_lengths=controller_queue_lengths,
                     native_durations=native_durations[tls_id],
                     sim_time=env.sim_time if mode == "fixed_time" else None,

@@ -114,6 +114,11 @@ class TrainingRunConfig(BaseModel):
     checkpoint_dir: Path
     checkpoint_every_s: float = Field(default=600.0, gt=0)
     mlflow_experiment: str | None = None
+    max_wall_s: float | None = Field(default=None, gt=0)
+    """Stop after the first iteration that finishes past this many wall-clock seconds,
+    saving a resumable checkpoint. For time-boxed sessions (a Kaggle/Colab run has a hard
+    session limit): ask for far more iterations than fit and let the budget end the run
+    cleanly, then resume from the checkpoint in the next session."""
     ppo_config: PPOConfig = Field(default_factory=PPOConfig)
 
 
@@ -227,6 +232,7 @@ def run_training(
             logger.warning("mlflow.not_installed", detail="metrics will be logged, not tracked")
 
     obs_dict = env.reset(seed=config.seed)
+    run_started = time.monotonic()
     episode_step = 0
     last_checkpoint_time = time.monotonic()
     iteration = start_iteration - 1
@@ -302,6 +308,18 @@ def run_training(
                 save_checkpoint(ckpt_path, iteration, net, trainer.optimizer, reward_normalizer)
                 last_checkpoint_time = time.monotonic()
                 logger.info("train.checkpoint", iteration=iteration, path=str(ckpt_path))
+
+            if (
+                config.max_wall_s is not None
+                and time.monotonic() - run_started >= config.max_wall_s
+            ):
+                logger.info(
+                    "train.time_budget_reached",
+                    iteration=iteration,
+                    budget_s=config.max_wall_s,
+                    resume_with="the same command -- it continues from the saved checkpoint",
+                )
+                break
     finally:
         if iteration >= 0:
             save_checkpoint(ckpt_path, iteration, net, trainer.optimizer, reward_normalizer)

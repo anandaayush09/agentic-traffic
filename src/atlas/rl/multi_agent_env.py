@@ -31,6 +31,7 @@ phases, but incoming lane counts range from 2 to 10. So:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -73,11 +74,23 @@ class MultiAgentSignalEnv:
     junction in `config.tls_ids`, sharing one underlying SumoTwinEnv.
     """
 
-    def __init__(self, config: MultiAgentSignalEnvConfig) -> None:
+    def __init__(
+        self,
+        config: MultiAgentSignalEnvConfig,
+        programs: Mapping[str, MaxPressureProgram] | None = None,
+    ) -> None:
+        """`programs`: prebuilt per-junction control structures (see
+        `atlas.control.signal_index.NetworkSignalIndex`). Without them each junction's program is
+        parsed from the network file separately -- fine for a district, but a city should read the
+        file once and pass the result in."""
         self._config = config
 
         self._mp_programs: dict[str, MaxPressureProgram] = {
-            tls_id: MaxPressureProgram.from_net_file(tls_id, config.twin_config.net_file)
+            tls_id: (
+                programs[tls_id]
+                if programs is not None
+                else MaxPressureProgram.from_net_file(tls_id, config.twin_config.net_file)
+            )
             for tls_id in config.tls_ids
         }
         self._incoming_lanes: dict[str, tuple[str, ...]] = {}
@@ -265,6 +278,15 @@ class MultiAgentSignalEnv:
             lane_id: int(conn.lane.getLastStepHaltingNumber(lane_id))
             for lane_id in self._lane_ids_for_pressure[tls_id]
         }
+
+    def observe(self, tls_id: str) -> np.ndarray:
+        """The current observation for one agent -- exactly what `step()` returns for it,
+        available between steps. For executing a trained policy outside the training loop
+        (the live twin, the evaluation harness), which decide before they step."""
+        self._require_twin()
+        if tls_id not in self._shields:
+            raise KeyError(f"'{tls_id}' is not an agent of this environment")
+        return self._build_observation(tls_id)
 
     def _build_observation(self, tls_id: str) -> np.ndarray:
         twin = self._require_twin()

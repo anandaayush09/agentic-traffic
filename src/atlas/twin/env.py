@@ -64,6 +64,16 @@ class TwinEnvConfig(BaseModel):
     around the blockage instead of raising a fatal error. Off by default: it changes
     vehicle behavior (and therefore any measured traffic statistics), so it should only be
     on when a run actually needs dynamic rerouting -- e.g. scenario-engine closures."""
+    time_to_teleport_s: float = -1
+    """Seconds a vehicle may sit blocked before SUMO teleports it past the jam. -1 (the default,
+    unchanged behaviour) disables teleporting, which is right for a small district where a stuck
+    vehicle is a bug to notice. At city scale it is wrong: one gridlock cycle would then never clear
+    and the whole simulation would stall for good, so city profiles set a finite value (and count
+    teleports as a quality signal -- many teleports means the demand is too high for the network)."""
+    scale: float = Field(default=1.0, gt=0)
+    """Multiplies how many vehicles the route file inserts (SUMO's --scale): 0.5 halves the traffic,
+    2.0 doubles it. Lets one generated demand file be run at many densities (the capacity
+    benchmark sweeps this) instead of regenerating demand for each."""
     tripinfo_output: Path | None = None
     """Where SUMO writes its own per-vehicle tripinfo XML (duration, waitingTime,
     timeLoss, etc. per completed trip) -- the source of truth
@@ -159,13 +169,15 @@ class SumoTwinEnv:
             "--duration-log.disable",
             "true",
             "--time-to-teleport",
-            "-1",
+            str(self._config.time_to_teleport_s),
             # A vehicle whose pre-computed route is invalidated mid-run (e.g. a scenario-
             # engine closure with no alternate path in a small/sparse network) must not be
             # able to crash the entire simulation -- SUMO drops that one vehicle instead.
             "--ignore-route-errors",
             "true",
         ]
+        if self._config.scale != 1.0:
+            cmd += ["--scale", str(self._config.scale)]
         for extra in self._config.additional_files:
             cmd += ["--additional-files", str(extra)]
         if self._config.tripinfo_output is not None:

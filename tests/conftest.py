@@ -7,7 +7,16 @@ its fixed seed, so re-running it per test would only slow the suite down for no 
 
 from __future__ import annotations
 
-import sys
+# Load libsumo before anything else in the process: SUMO ships its own sqlite3.dll, and if
+# any module imports Python's `sqlite3` first (a test file, or the durable-state code),
+# libsumo can no longer start on Windows. Doing it here makes the whole suite independent
+# of test collection order.
+import contextlib
+
+with contextlib.suppress(ModuleNotFoundError):
+    import libsumo  # noqa: F401
+
+import sys  # noqa: E402
 from pathlib import Path
 
 import pytest

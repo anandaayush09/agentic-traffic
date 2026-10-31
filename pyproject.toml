@@ -7,15 +7,15 @@ requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 
 dependencies = [
-    "eclipse-sumo==1.27.1",
+    "eclipse-sumo==1.28.0",
     "libsumo==1.27.1",
     "traci==1.27.1",
-    "sumolib==1.27.1",
+    "sumolib==1.28.0",
     "pydantic>=2.13,<3",
     "pydantic-settings>=2.14,<3",
     "pyyaml>=6.0,<7",
     "structlog>=26.0,<27",
-    "gymnasium>=0.29,<1.1",
+    "gymnasium>=0.29,<1.5",
     "stable-baselines3>=2.3,<3",
     # Pinned narrow, not just "whatever satisfies stable-baselines3's own >=2.8,<3.0"
     # declaration: torch==2.14.0 (the newest resolvable) hit a real bug loading SB3
@@ -25,7 +25,7 @@ dependencies = [
     # checkpoint" error (verified: the exact same weights load fine once extracted to
     # a real file first). Pinned near SB3 2.9.0's declared floor, most likely to
     # actually have been tested against.
-    "torch>=2.8,<2.9",
+    "torch>=2.8,<2.15",
     "ray>=2.40,<3",
     "jsonschema>=4.23,<5",
     # kafka-python, not confluent-kafka: pure Python, no native/C-extension dependency.

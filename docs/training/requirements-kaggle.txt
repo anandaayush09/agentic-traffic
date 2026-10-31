@@ -1,0 +1,16 @@
+# Minimal dependencies for TRAINING ONLY (scripts/train_mappo_district.py) on a cloud notebook.
+# Deliberately not `pip install -e .`: the project pins Python 3.12 and pulls in the API,
+# dashboard and Ray stacks, none of which training needs -- and a notebook image's Python
+# version may differ. PyTorch is preinstalled on Kaggle/Colab GPU images; if it isn't,
+# install it first.
+eclipse-sumo==1.27.1
+libsumo==1.27.1
+traci==1.27.1
+sumolib==1.27.1
+pyproj>=3.7,<4
+numpy
+gymnasium>=0.29,<1.1
+pydantic>=2.13,<3
+pydantic-settings>=2.14,<3
+pyyaml>=6.0,<7
+structlog>=26.0,<27

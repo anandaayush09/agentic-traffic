@@ -22,6 +22,12 @@ be started, interrupted, and resumed across sessions without this script changin
 
 Usage:
     python scripts/train_mappo_district.py [--iterations 40] [--num-steps 128]
+
+Time-boxed / cloud sessions (see docs/training/kaggle.md): ask for more iterations than will
+fit, set `--max-hours`, and the run stops cleanly after the iteration that crosses the budget,
+leaving a resumable checkpoint. Re-run the SAME command in the next session to continue.
+    python scripts/train_mappo_district.py --iterations 3000 --max-hours 8.5 \
+        --checkpoint-dir /kaggle/working/checkpoints --model-path /kaggle/working/mappo.pt
 """
 
 from __future__ import annotations
@@ -104,7 +110,15 @@ def make_env() -> MultiAgentSignalEnv:
     return MultiAgentSignalEnv(config)
 
 
-def train(num_iterations: int, num_steps: int, seed: int = 42) -> ActorCritic:
+def train(
+    num_iterations: int,
+    num_steps: int,
+    seed: int = 42,
+    checkpoint_dir: Path = CHECKPOINT_DIR,
+    model_path: Path = MODEL_PATH,
+    max_wall_s: float | None = None,
+    use_mlflow: bool = True,
+) -> ActorCritic:
     run_name = f"district_{config_hash({'tls_ids': DISTRICT_TLS_IDS, 'seed': seed})}"
     config = TrainingRunConfig(
         run_name=run_name,
@@ -112,13 +126,14 @@ def train(num_iterations: int, num_steps: int, seed: int = 42) -> ActorCritic:
         num_steps=num_steps,
         episode_decisions=EPISODE_DECISIONS,
         seed=seed,
-        checkpoint_dir=CHECKPOINT_DIR,
-        mlflow_experiment="atlas-mappo-district",
+        checkpoint_dir=checkpoint_dir,
+        mlflow_experiment="atlas-mappo-district" if use_mlflow else None,
+        max_wall_s=max_wall_s,
     )
     net = run_training(make_env, config)
 
-    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(net.state_dict(), MODEL_PATH)
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(net.state_dict(), model_path)
     return net
 
 
@@ -127,8 +142,22 @@ def main() -> None:
     parser.add_argument("--iterations", type=int, default=40)
     parser.add_argument("--num-steps", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--checkpoint-dir", type=Path, default=CHECKPOINT_DIR)
+    parser.add_argument("--model-path", type=Path, default=MODEL_PATH)
+    parser.add_argument(
+        "--max-hours", type=float, default=None, help="stop cleanly after this wall-clock budget"
+    )
+    parser.add_argument("--no-mlflow", action="store_true", help="skip MLflow tracking")
     args = parser.parse_args()
-    train(num_iterations=args.iterations, num_steps=args.num_steps, seed=args.seed)
+    train(
+        num_iterations=args.iterations,
+        num_steps=args.num_steps,
+        seed=args.seed,
+        checkpoint_dir=args.checkpoint_dir,
+        model_path=args.model_path,
+        max_wall_s=args.max_hours * 3600 if args.max_hours else None,
+        use_mlflow=not args.no_mlflow,
+    )
 
 
 if __name__ == "__main__":

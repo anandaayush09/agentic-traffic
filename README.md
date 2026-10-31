@@ -94,23 +94,28 @@ Other measured, reproducible results:
 
 ## What isn't done, said plainly
 
-Two things, both requiring resources this development environment doesn't have — not silently
+Two things, both requiring resources this development environment didn't have — not silently
 assumed complete, not worked around, just genuinely blocked:
 
-1. **No MAPPO checkpoint has been trained to real convergence.** The from-scratch MAPPO
+1. **No MAPPO checkpoint has been trained to real convergence.** (The path to close this is now
+   built and smoke-tested end to end -- time-boxed resumable training, a Kaggle bootstrap, loading
+   a checkpoint into the live twin and the evaluation -- but the multi-hour GPU run itself hasn't
+   happened; see [`docs/training/kaggle.md`](docs/training/kaggle.md).) The from-scratch MAPPO
    implementation ([ADR-0009](docs/adr/0009-mappo-from-scratch-not-rllib.md)) is fully built,
    unit-verified layer by layer, and proven to train correctly on short runs (beats a random
    baseline by ~66% on mean pressure). Reaching real convergence needs the multi-hour-to-
    multi-day Colab/Kaggle GPU session the design's own throughput math calls for — a resource
    this session never had. RL is therefore absent (not weakened) from every evaluation number
    above; `mode="rl"` fails loudly rather than silently evaluating an under-trained policy.
-2. **No real LLM provider is wired up**, not even the free local-first Ollama fallback the
-   design's own descope plan names. The `ProviderChain`'s fallback logic
-   ([ADR-0010](docs/adr/0010-llm-provider-chain-with-deterministic-terminal-fallback.md)) is
-   fully built and tested; every incident in this build is handled by its deterministic
-   terminal fallback, measured at 100% playbook accuracy / grounding / parameter sanity on
-   the 10-incident scripted suite — a real result, but one that validates the fallback's
-   curated defaults, not LLM reasoning quality.
+2. **No LLM result has been measured against a live key.** Real Groq and Gemini providers now
+   exist with quota-aware routing and Redis-shared limits
+   ([ADR-0014](docs/adr/0014-quota-aware-llm-routing-with-redis-shared-limits.md)), and are tested
+   end to end against mocked HTTP and the real simulation -- but this repo has never been run
+   with real API keys, so the providers' live behaviour and the LLM's playbook quality versus the
+   deterministic mapper (100% accuracy / grounding / parameter sanity on the 10-incident suite,
+   which validates the curated defaults, not LLM reasoning) are still unmeasured.
+   `scripts/check_llm_providers.py` and `scripts/eval_scripted_incidents.py --llm` are how to
+   close that gap once keys are set.
 
 The full, precise reconciliation of these two gaps against the original risk register is
 [ADR-0013](docs/adr/0013-r1-r2-r4-descope-outcomes.md). Everything else in the frozen
@@ -152,9 +157,107 @@ python scripts/run_evaluation_pilot.py
 python scripts/run_dashboard_demo_api.py   # then: cd frontend && npm install && npm run dev
 ```
 
+**One command:** `make demo` (or `python scripts/run_demo.py`) starts the API and the dashboard
+together, waits until both answer, and stops both on Ctrl+C. In the dashboard click
+**Get demo token** (no pasting JWTs -- that button exists only under `make demo`, is local-only,
+and is off whenever the API is started any other way), then try **Demo: accident**.
+
+The dashboard is wired to a **live, closed-loop digital twin** (`run_dashboard_demo_api.py` runs the
+Manhattan SUMO network in the background -- [`live_traffic.py`](src/atlas/services/live_traffic.py)
+on the shared [`controlled_twin.py`](src/atlas/twin/controlled_twin.py)):
+
+- **Map:** roads coloured by speed vs. limit, every vehicle a dot, disrupted roads haloed.
+- **Signal control:** ATLAS controllers (fixed-time / actuated / max-pressure, through the safety
+  shield) drive **all 22 signalized junctions** of the district; switch any one from the *Signal
+  control* panel (needs an operator token). With a trained policy loaded
+  (`ATLAS_RL_CHECKPOINT=<file>`), an **RL policy** option appears too -- see
+  [`docs/training/kaggle.md`](docs/training/kaggle.md) for how to train one.
+- **Incidents disrupt real roads:** `Demo: accident` / `Demo: closure` (or `POST /incidents` with
+  `class` = accident / closure / construction / weather) inject a scenario-engine disruption.
+- **Responses are simulated, then applied:** for `divert_arterial` and `meter_upstream` the what-if
+  tool runs the incident on the real network with and without the playbook (same seed) and shows
+  the numbers. Approving applies the playbook to the live twin (`atlas.twin.playbook_effects`);
+  the dashboard then reports the *observed* queue change on the affected roads. Rerouting still
+  asks a human even when it helps -- only mode changes and no-ops auto-apply.
+
+**LLM proposals (optional).** Put `GROQ_API_KEY` and/or `GEMINI_API_KEY` in a local `.env`
+(gitignored; see `.env.example`) and the Supervisor's playbook proposals come from those models
+instead of the lookup table. Per incident, [`AdaptiveProviderChain`](src/atlas/cognitive/llm/router.py)
+picks the provider with the most quota headroom and best health, with per-minute/day counters and
+cooldowns shared through Redis (`docker compose up -d redis`; in-memory fallback if it's down). The model only
+*proposes*: replies are schema-, grounding- and sanity-checked, then simulated, and disruptive
+playbooks still need a human ([ADR-0014](docs/adr/0014-quota-aware-llm-routing-with-redis-shared-limits.md)).
+`python scripts/check_llm_providers.py` makes one real call per configured provider;
+`python scripts/eval_scripted_incidents.py --llm` scores them on the 10-incident suite.
+
+- **Live feed and replay:** the map is pushed over a WebSocket (falling back to polling), and the
+  *Replay scrubber* rewinds it through the last ~15 minutes of recorded frames (in memory; the
+  design's Timescale telemetry store is still not built).
+- **Durable decisions (opt-in):** `ATLAS_STATE_DB=data/state/atlas.sqlite` keeps incidents -- including
+  ones awaiting approval -- across API restarts (LangGraph `SqliteSaver`). It persists the decision
+  *record*, not the simulation: after a restart the road starts clean at t=0.
+
+Honest limits: `weather_capacity_derate` and `bus_bridge` have no defensible simulation, so they stay
+unchecked; `meter_upstream` is modelled as max-pressure on the upstream junctions (its numeric `rate`
+is not enforced); the live "observed impact" is one non-stationary run, not a controlled test (the
+what-if comparison is the controlled one). Set `ATLAS_LIVE_TRAFFIC=0` to run without the live twin.
+
 **Kubernetes** (kind + Helm, verified against a real local cluster):
 `python scripts/kind_smoke_test.py` — installs the chart, runs a scripted demo scenario, then
 kills a pod and verifies the cluster self-heals.
+
+## Docker, testing and CI/CD
+
+Full guide, with the reasoning and a first-time setup checklist: [`docs/operations/ci-cd.md`](docs/operations/ci-cd.md).
+
+**Architecture, in deployment terms.** Two containers and an optional third. The **API** (`atlas-api`,
+Python/FastAPI) runs the supervisor graph, the live SUMO traffic simulation and the WebSocket feed. The
+**dashboard** (`atlas-web`, React served by nginx) calls it from the browser. **Redis** is optional (shared LLM
+rate limits; it falls back to in-memory). State is in memory unless `ATLAS_STATE_DB` points at a persistent
+file. The API is deliberately a *single instance*: the simulation and incident state live in that process.
+
+**Prerequisites:** Python 3.12 + [uv](https://docs.astral.sh/uv/), Node 22+, and Docker (for the container steps).
+
+**Local development**
+```bash
+uv sync --extra dev                       # add --extra training for the MLflow-based training scripts
+python scripts/build_district_network.py && python scripts/generate_demand.py   # once
+make demo                                 # API + dashboard together (see "Try it" above)
+```
+
+**Tests and checks** (exactly what CI runs)
+```bash
+uv run ruff check . && uv run ruff format --check . && uv run mypy      # lint + security rules + format + types
+uv run pytest --cov=atlas --cov-fail-under=90                           # ~820 tests, ~94% coverage
+cd frontend && npm ci && npm run lint && npm run build                  # dashboard
+uvx pip-audit -r <(uv export --frozen --no-hashes --no-emit-project)    # dependency vulnerabilities
+```
+The external LLM providers and Redis are mocked in tests (no keys, no paid calls, no services needed).
+
+**Docker**
+```bash
+docker compose --profile app up --build            # API + dashboard + Redis; open http://localhost:8080
+docker compose logs cognitive_api | grep -A1 "Operator JWT"    # the local operator token
+docker build -t atlas-api .                        # API image (builds the road network inside)
+docker build -t atlas-web frontend                 # dashboard image
+docker run -p 8000:8000 atlas-api                  # then: python scripts/smoke_test_deployment.py --base-url http://localhost:8000
+```
+
+**CI/CD pipeline** (`.github/workflows/ci.yml` + `deploy.yml`). On every push/PR, **CI** runs lint/format/types,
+the test suite, the frontend build and a dependency audit; if all pass it builds both images, starts the API
+container and smoke-tests it. On the default branch only, **CD** then publishes `ghcr.io/<owner>/atlas-api:sha-<commit>`,
+deploys that image to **staging**, verifies the *new* version is the one answering, and, after a manual
+approval, promotes the *same image* to **production**. A failing check anywhere stops everything after it.
+
+**Required configuration** is environment variables (documented in [`.env.example`](.env.example), placeholders
+only): `ATLAS_JWT_SECRET`, `ATLAS_DASHBOARD_ORIGINS` and `ATLAS_ENV` are mandatory outside development, and the API
+**refuses to start** in staging/production without safe values. Deploy credentials are GitHub *Environment*
+secrets (`DEPLOY_HOOK_API`, ...), never in the repo.
+
+**Deploying:** merge to the default branch; staging deploys itself; approve production in the Actions tab.
+**Rolling back:** Actions -> *Deploy* -> *Run workflow* with the previous good `sha-...` tag, which is verified by
+the same smoke test. **Troubleshooting:** the guide's [table](docs/operations/ci-cd.md#troubleshooting) covers
+failed jobs, container exits, CORS/URL mismatches and "NOT DEPLOYED" messages.
 
 ## Documentation map
 
@@ -163,6 +266,8 @@ kills a pod and verifies the cluster self-heals.
 | [`docs/design/`](docs/design/00_executive_summary.md) | The frozen design: problem, architecture, agents, comms, AI pipeline, tech stack, data, evaluation protocol, risks, 12-week roadmap |
 | [`docs/adr/`](docs/adr/README.md) | 13 one-page Architecture Decision Records — why each major choice was made, and what happened when it met reality |
 | [`docs/report/evaluation_pilot_report.md`](docs/report/evaluation_pilot_report.md) | The real, reproducible statistical evaluation behind the headline numbers above |
+| [`docs/operations/ci-cd.md`](docs/operations/ci-cd.md) | CI/CD pipeline, Docker, environments, secrets, release, rollback, logs, troubleshooting |
+| [`docs/training/kaggle.md`](docs/training/kaggle.md) | Training the MAPPO policy in the cloud and bringing it back |
 | [`docs/security/threat_model.md`](docs/security/threat_model.md) | What's actually authenticated/authorized, and the honestly-named gaps |
 | [`data/networks/manhattan_midtown/AUDIT.md`](data/networks/manhattan_midtown/AUDIT.md) | The real network's provenance and quality audit |
 
@@ -198,7 +303,8 @@ mypy                    # type-check (strict)
 pytest                  # full test suite (unit + integration + chaos)
 ```
 
-CI (`.github/workflows/ci.yml`) runs all four on every push/PR; a nightly workflow
+CI (`.github/workflows/ci.yml`) runs these plus a coverage floor, the frontend build, a dependency audit
+and a container smoke test on every push/PR (`make check` runs the Python half locally); a nightly workflow
 (`eval.yml`) re-runs a smoke-sized evaluation as a regression gate. `make help` lists the
 same commands plus `train`/`eval`/`demo`/`up`/`down` shortcuts — `up`/`down` wrap `docker
 compose`, exercised for real via `scripts/kind_smoke_test.py`'s Helm/kind path rather than

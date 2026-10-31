@@ -21,14 +21,37 @@ LogFormat = Literal["console", "json"]
 _CONFIGURED = False
 
 
-def configure_logging(level: str = "INFO", fmt: LogFormat = "console") -> None:
+def _settings_defaults() -> tuple[str, LogFormat]:
+    """The level/format from `ATLAS_LOG_LEVEL` / `ATLAS_LOG_FORMAT` (env or `.env`), falling
+    back to INFO/console. Imported lazily to avoid a config <-> logging import cycle, and
+    never allowed to raise: a malformed setting must not stop logging from starting."""
+    try:
+        from atlas.common.config import ProjectSettings
+
+        settings = ProjectSettings()
+        return settings.log_level, settings.log_format
+    except Exception:  # an invalid value, a broken .env ...
+        return "INFO", "console"
+
+
+def configure_logging(level: str | None = None, fmt: LogFormat | None = None) -> None:
     """Configure structlog for the current process. Safe to call multiple times; only the
     first call takes effect, so importing a module that calls this at import time never
     clobbers a configuration a service entrypoint already set up.
+
+    Called with no arguments (which is what `get_logger` does the first time ANY module asks
+    for a logger, typically at import time, before the service's entrypoint has run) it uses
+    the `ATLAS_LOG_LEVEL` / `ATLAS_LOG_FORMAT` settings. That matters: otherwise whichever
+    module happened to import first would silently lock in console format, and
+    `ATLAS_LOG_FORMAT=json` -- what containers set so logs are machine-searchable -- would
+    be ignored.
     """
     global _CONFIGURED
     if _CONFIGURED:
         return
+    default_level, default_fmt = _settings_defaults()
+    level = level if level is not None else default_level
+    fmt = fmt if fmt is not None else default_fmt
 
     logging.basicConfig(
         format="%(message)s",

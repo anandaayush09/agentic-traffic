@@ -17,10 +17,13 @@ the operator's decision. This is a real fork in behavior, not just two node name
 low-impact path never pauses at all.
 
 Auto-apply policy (deliberately conservative, matching what_if.py's own honesty): a
-proposal only auto-applies if its what-if check actually RAN (`checked=True`) and
-showed improvement. An unchecked playbook (anything but switch_to_max_pressure/
-hold_current_plan, today) ALWAYS goes to REQUEST_APPROVAL -- "no grounded evidence
-either way" is never treated as "assume it's fine".
+proposal only auto-applies if its what-if check actually RAN (`checked=True`), showed
+improvement, AND the playbook is one of the low-impact ones (`AUTO_APPLY_ELIGIBLE`: a
+controller-mode change or a no-op). Rerouting traffic or metering inflow can be
+simulated and shown to help, but they change what drivers experience, so they still
+ask a human -- now with the simulated evidence attached. An unchecked playbook ALWAYS
+goes to REQUEST_APPROVAL -- "no grounded evidence either way" is never treated as
+"assume it's fine".
 """
 
 from __future__ import annotations
@@ -34,11 +37,14 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from atlas.cognitive.playbooks import PlaybookProposal, PlaybookRegistry
-from atlas.cognitive.provider_chain import ProviderChain
+from atlas.cognitive.provider_chain import ProposalSource
 from atlas.cognitive.what_if import WhatIfResult, run_what_if
 from atlas.common.logging import get_logger
+from atlas.twin.tiles import TileStore
 
 logger = get_logger(__name__)
+
+AUTO_APPLY_ELIGIBLE = frozenset({"switch_to_max_pressure", "hold_current_plan"})
 
 
 class SupervisorState(TypedDict):
@@ -48,18 +54,23 @@ class SupervisorState(TypedDict):
     provider_used: str | None
     what_if_checked: bool
     what_if_improved: bool | None
+    what_if_detail: dict[str, object] | None
+    """The simulated comparison behind `what_if_improved` (metric, baseline, proposed),
+    or None when nothing was simulated / the playbook has no simulated numbers."""
     auto_applied: bool
     approved: bool | None
     status: str
 
 
 def build_supervisor_graph(
-    provider_chain: ProviderChain,
+    provider_chain: ProposalSource,
     registry: PlaybookRegistry,
     net_file: Path,
     route_file: Path,
     checkpointer: BaseCheckpointSaver[str],
     additional_files: list[Path] | None = None,
+    what_if: bool = True,
+    tiles: TileStore | None = None,
 ) -> CompiledStateGraph[SupervisorState, None, SupervisorState, SupervisorState]:
     def classify(state: SupervisorState) -> dict[str, object]:
         return {"status": "triaged"}
@@ -76,23 +87,48 @@ def build_supervisor_graph(
     def verify(state: SupervisorState) -> dict[str, object]:
         assert state["proposal"] is not None  # parameterize always runs first
         proposal = PlaybookProposal.model_validate(state["proposal"])
+        if not what_if:
+            # E.g. a whole-city twin, where two full simulations per incident don't fit a
+            # request: the incident is still triaged, but never auto-applied (no evidence).
+            return {"what_if_checked": False, "what_if_improved": None, "what_if_detail": None}
         result: WhatIfResult = run_what_if(
-            proposal, net_file, route_file, additional_files=additional_files
+            proposal,
+            net_file,
+            route_file,
+            additional_files=additional_files,
+            incident=state["incident"],
+            tiles=tiles,
         )
-        return {"what_if_checked": result.checked, "what_if_improved": result.improved}
+        detail: dict[str, object] | None = None
+        if result.checked and result.baseline_mean_pressure is not None:
+            detail = {
+                "metric": result.metric,
+                "baseline": result.baseline_mean_pressure,
+                "proposed": result.proposed_mean_pressure,
+            }
+        return {
+            "what_if_checked": result.checked,
+            "what_if_improved": result.improved,
+            "what_if_detail": detail,
+        }
 
     def decide(state: SupervisorState) -> dict[str, object]:
-        low_impact = state["what_if_checked"] and state["what_if_improved"] is True
+        assert state["proposal"] is not None
+        low_impact = (
+            state["what_if_checked"]
+            and state["what_if_improved"] is True
+            and str(state["proposal"]["playbook_name"]) in AUTO_APPLY_ELIGIBLE
+        )
         if low_impact:
             return {"auto_applied": True, "approved": True, "status": "responding"}
 
-        assert state["proposal"] is not None
         decision = interrupt(
             {
                 "incident_id": state["incident"].get("incident_id"),
                 "proposal": state["proposal"],
                 "what_if_checked": state["what_if_checked"],
                 "what_if_improved": state["what_if_improved"],
+                "what_if_detail": state["what_if_detail"],
                 "question": "Approve this playbook proposal?",
             }
         )
@@ -144,6 +180,7 @@ def initial_state(incident: dict[str, object]) -> SupervisorState:
         provider_used=None,
         what_if_checked=False,
         what_if_improved=None,
+        what_if_detail=None,
         auto_applied=False,
         approved=None,
         status="detected",

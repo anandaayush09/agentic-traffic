@@ -4,27 +4,45 @@ enforces tool-grounding by construction"). Real simulation-backed verification f
 two playbook types this project can actually model with existing infrastructure;
 everything else is honestly reported as unverifiable, not given a fabricated effect.
 
+`divert_arterial` and `meter_upstream` are verified by simulating the INCIDENT itself on
+the real network with and without the playbook's response (`atlas.twin.controlled_twin`
++ `atlas.twin.playbook_effects`) and comparing mean halted vehicles network-wide -- so
+they need the incident, not just the proposal. Without one (or when the playbook can't be
+compiled onto this network) the answer stays honestly `checked=False`.
+
 `switch_to_max_pressure`'s what-if directly reuses the same real-controller comparison
 scripts/eval_smoke_suite.py already runs for its CI regression gate (max-pressure vs
 fixed-time, real junctions, real network) -- answering the actual question this
 playbook proposes: would falling back to max-pressure at these junctions measurably
 help versus the classical fixed-time fallback underneath it. `hold_current_plan` is
-trivially safe (no change proposed, nothing to verify). Every OTHER playbook type
-(divert_arterial, meter_upstream, bus_bridge, weather_capacity_derate) would need a
-real playbook-to-simulation effect compiler this project doesn't have yet -- `checked=
-False` for those is the honest answer, not a guessed effect, and the Supervisor graph
-(supervisor.py) treats "unchecked" as "always require operator approval", never
-"assume it's fine".
+trivially safe (no change proposed, nothing to verify). `bus_bridge` (no transit in the
+network) and `weather_capacity_derate` (derating *assumed* capacity has no physical
+lever) have no defensible simulation -- `checked=False` for those is the honest answer,
+not a guessed effect, and the Supervisor graph (supervisor.py) treats "unchecked" as
+"always require operator approval", never "assume it's fine".
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from atlas.cognitive.playbooks import PlaybookProposal
+from atlas.common.logging import get_logger
 from atlas.control.max_pressure import MaxPressureProgram
 from atlas.services.decision import select_action_for_mode
+
+if TYPE_CHECKING:
+    from atlas.twin.tiles import TileStore
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +56,16 @@ class WhatIfResult:
     baseline's."""
     baseline_mean_pressure: float | None
     proposed_mean_pressure: float | None
+    metric: str = "mean_pressure"
+    """What the two numbers above measure (lower is better): "mean_pressure" for the
+    max-pressure comparison, "mean_halted_vehicles" for incident-response comparisons."""
+
+
+# Simulated-time layout of an incident what-if: warm the network up, hit it with the
+# incident (plus the response, in the proposed run), then measure. Decisions are 5 s each.
+_WARMUP_DECISIONS = 60
+_MEASURE_DECISIONS = 72
+_DISRUPTION_DURATION_S = 900
 
 
 def run_what_if(
@@ -47,8 +75,18 @@ def run_what_if(
     num_decisions: int = 40,
     seed: int = 42,
     additional_files: list[Path] | None = None,
+    incident: Mapping[str, object] | None = None,
+    tiles: TileStore | None = None,
+    whole_network: bool = False,
 ) -> WhatIfResult:
-    """`additional_files`: SUMO additional files (e.g. a network's `vtypes.add.xml`)
+    """`tiles`: simulate on a small cut of the network around the incident instead of all of it (see
+    `atlas.twin.tiles`), in a separate process -- what a city-sized network needs.
+    `whole_network`: ATLAS controls every signal of `net_file` rather than the Midtown district's
+    (used for a tile, whose signals are not the district's).
+
+    `incident`: the incident being responded to -- required to verify
+    `divert_arterial`/`meter_upstream`, which are judged by how they change the
+    incident's impact. `additional_files`: SUMO additional files (e.g. a network's `vtypes.add.xml`)
     needed alongside `route_file`. Real gap this parameter closes: manhattan_midtown's
     demand routes reference vehicle types defined in a separate fleet-mix additional
     file (Week 2 part 4), not inline -- omitting it isn't a problem on the sandbox
@@ -61,6 +99,9 @@ def run_what_if(
         return WhatIfResult(
             checked=True, improved=True, baseline_mean_pressure=None, proposed_mean_pressure=None
         )
+
+    if tiles is not None:
+        return _run_on_tile(proposal, tiles, seed, additional_files or [], incident)
 
     if proposal.playbook_name == "switch_to_max_pressure":
         junction_ids = proposal.params.get("junction_ids")
@@ -80,8 +121,95 @@ def run_what_if(
             additional_files or [],
         )
 
+    if proposal.playbook_name in ("divert_arterial", "meter_upstream") and incident is not None:
+        return _compare_incident_response(
+            proposal, incident, net_file, route_file, seed, additional_files or [], whole_network
+        )
+
     return WhatIfResult(
         checked=False, improved=None, baseline_mean_pressure=None, proposed_mean_pressure=None
+    )
+
+
+def _compare_incident_response(
+    proposal: PlaybookProposal,
+    incident: Mapping[str, object],
+    net_file: Path,
+    route_file: Path,
+    seed: int,
+    additional_files: list[Path],
+    whole_network: bool = False,
+) -> WhatIfResult:
+    from atlas.control.signal_index import NetworkSignalIndex
+    from atlas.twin.controlled_twin import DISTRICT_TLS_IDS, ControlledTwin, edge_halted_total
+    from atlas.twin.incident_effects import (
+        ROAD_EFFECT_CLASSES,
+        RoadIndex,
+        link_ids_of,
+        plan_disruption_specs,
+    )
+    from atlas.twin.playbook_effects import compile_playbook
+
+    unverifiable = WhatIfResult(
+        checked=False, improved=None, baseline_mean_pressure=None, proposed_mean_pressure=None
+    )
+    incident_class = str(incident.get("class", ""))
+    if incident_class not in ROAD_EFFECT_CLASSES:
+        return unverifiable  # nothing physical to respond to in the simulation
+
+    index = RoadIndex.from_net_file(net_file)
+    incident_edges = index.resolve(link_ids_of(incident.get("location")))
+    signals = NetworkSignalIndex.from_net_file(net_file) if whole_network else None
+    controlled = signals.controllable_ids if signals else list(DISTRICT_TLS_IDS)
+    effect = compile_playbook(proposal.playbook_name, proposal.params, index, controlled)
+    if not incident_edges or effect is None:
+        return unverifiable
+
+    incident_id = str(incident.get("incident_id", "what_if"))
+    all_edges = list(index.lane_counts)
+
+    def run(with_response: bool) -> float:
+        twin = ControlledTwin(
+            net_file,
+            route_file,
+            additional_files,
+            tls_ids="all" if whole_network else DISTRICT_TLS_IDS,
+            road_index=index,
+            signal_index=signals,
+            backend="libsumo",
+            time_to_teleport_s=300.0 if whole_network else -1,
+        )
+        twin.reset(seed=seed)
+        try:
+            twin.step_decisions(_WARMUP_DECISIONS)
+            twin.add_disruptions(
+                plan_disruption_specs(
+                    incident_id,
+                    incident_class,
+                    {e: index.lane_counts[e] for e in incident_edges},
+                    int(twin.sim_time),
+                    _DISRUPTION_DURATION_S,
+                )
+            )
+            if with_response:
+                twin.apply_effect("what_if_response", effect)
+            conn = twin.connection
+            total = 0
+            for _ in range(_MEASURE_DECISIONS):
+                twin.step_decisions(1)
+                total += edge_halted_total(conn, all_edges)
+            return total / _MEASURE_DECISIONS
+        finally:
+            twin.close()
+
+    baseline = run(with_response=False)
+    proposed = run(with_response=True)
+    return WhatIfResult(
+        checked=True,
+        improved=proposed < baseline,
+        baseline_mean_pressure=baseline,
+        proposed_mean_pressure=proposed,
+        metric="mean_halted_vehicles",
     )
 
 
@@ -102,7 +230,8 @@ def _compare_max_pressure_vs_fixed_time(
     native_durations = {
         jid: native_green_durations_from_net_file(jid, net_file) for jid in junction_ids
     }
-    max_lanes = max(len({m.from_lane for m in p.movements}) for p in programs.values())
+    max_lanes = max(10, *(len({m.from_lane for m in p.movements}) for p in programs.values()))
+    max_green_phases = max(2, *(len(p.green_phase_indices) for p in programs.values()))
 
     def make_env() -> MultiAgentSignalEnv:
         return MultiAgentSignalEnv(
@@ -115,7 +244,7 @@ def _compare_max_pressure_vs_fixed_time(
                 ),
                 tls_ids=junction_ids,
                 max_lanes=max_lanes,
-                max_green_phases=2,
+                max_green_phases=max_green_phases,
                 shield_config=ShieldConfig(min_green_s=10.0, max_green_s=60.0),
                 decision_interval_s=5.0,
             )
@@ -167,3 +296,89 @@ def _compare_max_pressure_vs_fixed_time(
         baseline_mean_pressure=baseline,
         proposed_mean_pressure=proposed,
     )
+
+
+_WORKER_TIMEOUT_S = 600.0
+
+
+def _worker_env() -> dict[str, str]:
+    """The worker must run THIS copy of `atlas` (the one that built the request), not whichever one
+    the interpreter would find first -- put our source root at the front of its import path."""
+    import atlas
+
+    source_root = str(Path(atlas.__file__).resolve().parents[1])
+    existing = os.environ.get("PYTHONPATH")
+    return {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([source_root, existing] if existing else [source_root]),
+    }
+
+
+def _run_on_tile(
+    proposal: PlaybookProposal,
+    tiles: TileStore,
+    seed: int,
+    additional_files: list[Path],
+    incident: Mapping[str, object] | None,
+) -> WhatIfResult:
+    """Simulates the what-if on the local tile around the incident, in a SEPARATE process.
+
+    Separate on purpose: libsumo is one global in-process simulation, and in city mode the live
+    digital twin already owns it -- starting another in this process would tear the live one down.
+    The worker prints one JSON line (a `WhatIfResult`); any failure is reported as `checked=False`
+    (no evidence), never as a guess.
+    """
+    from atlas.twin.incident_effects import link_ids_of
+
+    unverifiable = WhatIfResult(
+        checked=False, improved=None, baseline_mean_pressure=None, proposed_mean_pressure=None
+    )
+    if proposal.playbook_name == "switch_to_max_pressure":
+        links = [str(j) for j in proposal.params.get("junction_ids", []) or []]  # type: ignore[attr-defined]
+    elif incident is not None:
+        links = link_ids_of(incident.get("location"))
+    else:
+        return unverifiable
+    if not links:
+        return unverifiable
+
+    try:
+        tile = tiles.for_links(links)
+    except RuntimeError:
+        logger.exception("what_if.tile_build_failed")
+        return unverifiable
+    if tile is None:
+        return unverifiable
+
+    request = {
+        "proposal": proposal.model_dump(),
+        "incident": dict(incident) if incident is not None else None,
+        "net_file": str(tile.net_file),
+        "route_file": str(tile.route_file),
+        "additional_files": [str(p) for p in additional_files],
+        "seed": seed,
+    }
+    with tempfile.TemporaryDirectory() as directory:
+        request_path = Path(directory) / "request.json"
+        request_path.write_text(json.dumps(request), encoding="utf-8")
+        try:
+            done = subprocess.run(  # noqa: S603 -- our own module, our own temp file
+                [sys.executable, "-m", "atlas.cognitive.what_if_worker", str(request_path)],
+                capture_output=True,
+                text=True,
+                timeout=_WORKER_TIMEOUT_S,
+                check=False,
+                env=_worker_env(),
+            )
+        except subprocess.TimeoutExpired:
+            logger.error("what_if.worker_timeout", tile=tile.key)
+            return unverifiable
+    lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
+    if done.returncode != 0 or not lines:
+        logger.error("what_if.worker_failed", tile=tile.key, stderr=done.stderr[-400:])
+        return unverifiable
+    return WhatIfResult(**json.loads(lines[-1]))
+
+
+def result_as_json(result: WhatIfResult) -> str:
+    return json.dumps(asdict(result))

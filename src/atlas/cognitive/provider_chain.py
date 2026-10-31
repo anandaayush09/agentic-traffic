@@ -41,10 +41,30 @@ class ProviderRateLimitedError(ProviderError):
     """The provider's own rate limit was hit -- distinct from a hard failure so
     callers/logs can tell "will work again later" apart from "broken right now"."""
 
+    def __init__(self, message: str = "", retry_after_s: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after_s = retry_after_s
+        """How long the provider asked us to wait (Retry-After), when it said."""
+
 
 class ProviderUnavailableError(ProviderError):
     """The provider is down, timed out, or returned something not usable (e.g. failed
     structured-JSON-output parsing)."""
+
+
+class ProviderAuthError(ProviderUnavailableError):
+    """The provider rejected our credentials (401/403). A bad or revoked key will not fix
+    itself, so callers should back off for a long time rather than retry."""
+
+
+class ProposalSource(Protocol):
+    """Anything that turns an incident into `(proposal, name_of_who_answered)` and never
+    raises -- `ProviderChain` (fixed order) and `AdaptiveProviderChain` (quota/health-
+    aware routing) both satisfy it, and the Supervisor depends only on this."""
+
+    def propose(
+        self, incident: dict[str, object], available_playbooks: list[str]
+    ) -> tuple[PlaybookProposal, str]: ...
 
 
 class PlaybookProvider(Protocol):

@@ -22,3 +22,4 @@ that record decisions made during the actual 11-week build rather than in the up
 | [0011](0011-playbooks-as-bounded-templates.md) | Playbooks as bounded, pre-modeled response templates | Accepted | Design (Part 4) / built Week 9 |
 | [0012](0012-static-frozen-snapshot-public-demo.md) | Static frozen-snapshot public demo instead of a live backend | Accepted | Week 10 |
 | [0013](0013-r1-r2-r4-descope-outcomes.md) | R1/R2/R4 risk-register outcomes, as actually realized | Accepted | Week 11/12 |
+| [0014](0014-quota-aware-llm-routing-with-redis-shared-limits.md) | Quota- and health-aware LLM routing with Redis-shared rate limits | Accepted | Phase 2 |

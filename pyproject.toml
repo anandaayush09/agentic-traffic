@@ -83,7 +83,7 @@ dev = [
 # (and the pyarrow/libsumo native-library clash this project documents). Local training:
 # `uv sync --extra training`.
 training = [
-    "mlflow>=2.18,<3",
+    "mlflow>=2.18,<4",
 ]
 # Error monitoring. Optional on purpose: nothing imports it unless SENTRY_DSN is set, so the
 # image and local dev stay lean. The production image installs it (`--extra observability`).

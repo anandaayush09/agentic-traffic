@@ -76,7 +76,7 @@ jobs:
       # green having tested far less than it appears to. Build it (cached: the inputs rarely change).
       - name: Restore road network cache
         id: network-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             data/networks/manhattan_midtown/net.net.xml

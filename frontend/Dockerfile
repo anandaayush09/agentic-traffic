@@ -15,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # nginx-unprivileged runs as a non-root user and listens on 8080 (non-root can't bind <1024).
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 # Files in /etc/nginx/templates/*.template are run through envsubst into /etc/nginx/conf.d at start.
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

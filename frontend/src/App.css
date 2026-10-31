@@ -183,3 +183,180 @@
   margin-top: 0.5rem;
   font-weight: 600;
 }
+
+.map-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.traffic-overlay {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  max-width: 320px;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #ccd3da;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #26323d;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+.traffic-note {
+  margin: 0.3rem 0 0;
+  color: #666;
+}
+
+.traffic-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.35rem 0;
+}
+
+.traffic-legend,
+.traffic-disruptions {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+.traffic-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+
+.traffic-legend i {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.35rem;
+  border-radius: 2px;
+  margin-right: 0.3rem;
+  vertical-align: middle;
+}
+
+.traffic-legend .legend-disruption {
+  background: rgba(123, 44, 191, 0.55);
+  height: 0.6rem;
+}
+
+.traffic-disruptions li {
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.4rem;
+  background: #f3e9fb;
+  border-left: 3px solid #7b2cbf;
+  border-radius: 3px;
+}
+
+.signal-control {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  /* 22 junctions: keep the panel compact and scroll within it */
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.signal-control li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+}
+
+.signal-control .junction-id {
+  font-family: ui-monospace, monospace;
+  color: #555;
+  min-width: 3.2rem;
+}
+
+.signal-control select {
+  flex: 1;
+  padding: 0.15rem 0.25rem;
+}
+
+.junction-queue {
+  color: #555;
+  white-space: nowrap;
+}
+
+.override-badge {
+  background: #f3e9fb;
+  color: #7b2cbf;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.7rem;
+}
+
+.what-if-evidence {
+  margin: 0.6rem 0 0;
+  padding: 0.4rem 0.5rem;
+  background: #eaf4ff;
+  border-left: 3px solid #337ab7;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
+.impact {
+  margin-top: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  background: #eef8ee;
+  border-left: 3px solid #5cb85c;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
+.impact h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+}
+
+.impact p {
+  margin: 0.2rem 0;
+}
+
+.replay-badge {
+  background: #d9534f;
+  color: white;
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+}
+
+.replay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.replay input[type="range"] {
+  width: 100%;
+}
+
+.replay-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.signal-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+}

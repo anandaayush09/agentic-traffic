@@ -33,7 +33,7 @@ dependencies = [
     # (SB3/torch zip loading, libsumo-in-Ray, libsumo-vs-mlflow's pyarrow) -- a librdkafka
     # binding is exactly the kind of extra native surface that pattern predicts trouble
     # from, and Redpanda's Kafka-API compatibility means either client works identically.
-    "kafka-python>=2.0,<3",
+    "kafka-python>=2.0,<4",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.32,<1",
     "langgraph>=1.0.10,<2",

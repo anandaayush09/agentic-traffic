@@ -84,7 +84,8 @@ def fetch_osm_extract(force: bool = False) -> None:
     )
     logger.info("district_network.fetching_osm", url=OVERPASS_URL, bbox=BBOX)
     data = urllib.parse.urlencode({"data": query}).encode("utf-8")
-    request = urllib.request.Request(OVERPASS_URL, data=data, method="POST")
+    # OVERPASS_URL is a fixed https constant, not user input.
+    request = urllib.request.Request(OVERPASS_URL, data=data, method="POST")  # noqa: S310
     with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310
         body = response.read()
 

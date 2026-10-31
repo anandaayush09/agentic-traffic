@@ -1,0 +1,10 @@
+{
+  "city": "manhattan",
+  "label": "Manhattan (New York County borough)",
+  "overpass_url": "https://overpass-api.de/api/interpreter",
+  "query": "[out:xml][timeout:900];rel(8398124);map_to_area->.a;(way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|living_street)$\"](area.a););(._;>;);out;",
+  "fetched_utc": "2026-10-30T17:23:58+00:00",
+  "bytes": 12380984,
+  "sha256": "956bdd268cb1ac610406d2feb51a04dfa192f28072a4c9366fe615e5d559e784",
+  "license": "Data (c) OpenStreetMap contributors, ODbL 1.0"
+}

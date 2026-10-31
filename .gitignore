@@ -22,6 +22,10 @@ data/networks/*
 data/networks/manhattan_midtown/*
 !data/networks/manhattan_midtown/raw.osm.xml
 !data/networks/manhattan_midtown/AUDIT.md
+# Whole-borough Manhattan: large generated files stay ignored; only the provenance record is kept.
+!data/networks/manhattan/
+data/networks/manhattan/*
+!data/networks/manhattan/SOURCE.json
 
 # SUMO outputs
 *.xml.gz
@@ -39,6 +43,7 @@ mlartifacts/
 
 # Trained model checkpoints (regenerable via scripts/train_*.py)
 data/models/
+data/state/
 data/checkpoints/
 
 # Ultralytics YOLO: auto-downloaded pretrained checkpoints + its own run output dir
@@ -60,3 +65,9 @@ Thumbs.db
 # Node (frontend, added in later weeks)
 node_modules/
 dist/
+
+# CI/test artifacts
+coverage.xml
+test-results.xml
+requirements-audit.txt
+htmlcov/

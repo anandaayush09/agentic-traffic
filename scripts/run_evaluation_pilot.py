@@ -19,10 +19,20 @@ any scale.
 
 Usage:
     python scripts/run_evaluation_pilot.py
+    python scripts/run_evaluation_pilot.py --rl-checkpoint data/models/mappo_district.pt
+
+With `--rl-checkpoint` a trained MAPPO policy joins as a fourth controller (`rl`), compared
+to the same fixed-time baseline with the same Welch's t-test / Holm-Bonferroni correction
+(now across more comparisons). The report then goes to `evaluation_pilot_report_rl.md`
+instead of overwriting the committed classical-only report -- pass `--output` to choose.
+The policy runs on the 5 corridor junctions only (it is a shared decentralized actor, so a
+policy trained on all 22 can drive any subset); a checkpoint from a short smoke run will
+run fine and simply lose -- the report says which checkpoint and how many iterations.
 """
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +43,7 @@ from atlas.common.config import project_root  # noqa: E402
 from atlas.common.logging import configure_logging, get_logger  # noqa: E402
 from atlas.evaluation.runner import run_scenario_cell  # noqa: E402
 from atlas.evaluation.statistics import compare_two_controllers, holm_bonferroni  # noqa: E402
+from atlas.marl.policy_io import LoadedPolicy, load_policy  # noqa: E402
 from atlas.twin.scenario import ScenarioSpec  # noqa: E402
 
 configure_logging()
@@ -94,8 +105,11 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def run_pilot() -> dict[str, dict[str, list[float]]]:
+def run_pilot(
+    controllers: list[str] | None = None, policy: LoadedPolicy | None = None
+) -> dict[str, dict[str, list[float]]]:
     """Returns condition -> controller -> [mean_waiting_time_s per seed]."""
+    controllers = controllers or CONTROLLERS
     network_dir = project_root() / "data" / "networks" / "manhattan_midtown"
     net_file = network_dir / "net.net.xml"
     route_file = network_dir / "demand" / "pm_peak.rou.xml"
@@ -106,7 +120,7 @@ def run_pilot() -> dict[str, dict[str, list[float]]]:
     results: dict[str, dict[str, list[float]]] = {}
     for condition_name, spec in CONDITIONS.items():
         results[condition_name] = {}
-        for controller in CONTROLLERS:
+        for controller in controllers:
             waiting_times = []
             for seed in range(1, NUM_SEEDS + 1):
                 tripinfo_output = tripinfo_dir / f"{condition_name}_{controller}_seed{seed}.xml"
@@ -120,6 +134,7 @@ def run_pilot() -> dict[str, dict[str, list[float]]]:
                     tripinfo_output=tripinfo_output,
                     additional_files=[vtypes_file],
                     scenario_specs=[spec] if spec is not None else None,
+                    policy=policy if controller == "rl" else None,
                 )
                 waiting_times.append(metrics.mean_waiting_time_s)
                 logger.info(
@@ -133,12 +148,17 @@ def run_pilot() -> dict[str, dict[str, list[float]]]:
     return results
 
 
-def generate_report(results: dict[str, dict[str, list[float]]]) -> str:
+def generate_report(
+    results: dict[str, dict[str, list[float]]],
+    controllers: list[str] | None = None,
+    policy_note: str | None = None,
+) -> str:
+    controllers = controllers or CONTROLLERS
     rows = []
     p_values = []
     for condition_name in CONDITIONS:
         baseline = results[condition_name][BASELINE_CONTROLLER]
-        for controller in CONTROLLERS:
+        for controller in controllers:
             if controller == BASELINE_CONTROLLER:
                 continue
             comparison = compare_two_controllers(baseline, results[condition_name][controller])
@@ -155,6 +175,7 @@ def generate_report(results: dict[str, dict[str, list[float]]]) -> str:
         f"Seeds per cell: {NUM_SEEDS} (seeds 1-{NUM_SEEDS})",
         f"Decisions per episode: {NUM_DECISIONS} ({NUM_DECISIONS * 5}s simulated)",
         f"Baseline controller: {BASELINE_CONTROLLER}",
+        *([f"RL policy: {policy_note}"] if policy_note else []),
         "",
         "**Scope**: a real, honest pilot subset, not the full ~1,400-run suite "
         "docs/design/11_evaluation.md section 11.4 specifies -- see this script's "
@@ -194,9 +215,18 @@ def generate_report(results: dict[str, dict[str, list[float]]]) -> str:
 
 
 def main() -> None:
-    results = run_pilot()
-    report = generate_report(results)
-    output_path = project_root() / "docs" / "report" / "evaluation_pilot_report.md"
+    parser = argparse.ArgumentParser(description=__doc__.split("Usage:")[0])
+    parser.add_argument("--rl-checkpoint", type=Path, help="trained MAPPO policy to add as `rl`")
+    parser.add_argument("--output", type=Path, help="where to write the report")
+    args = parser.parse_args()
+
+    policy = load_policy(args.rl_checkpoint) if args.rl_checkpoint else None
+    controllers = [*CONTROLLERS, "rl"] if policy else list(CONTROLLERS)
+    results = run_pilot(controllers, policy)
+    report = generate_report(results, controllers, policy.description if policy else None)
+    report_dir = project_root() / "docs" / "report"
+    default_name = "evaluation_pilot_report_rl.md" if policy else "evaluation_pilot_report.md"
+    output_path = args.output or report_dir / default_name
     output_path.write_text(report)
     print(f"Wrote report to {output_path}")
     print()

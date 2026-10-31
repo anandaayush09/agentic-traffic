@@ -1,0 +1,50 @@
+# Whole-borough Manhattan fleet mix -- identical fractions to the Midtown district's (see
+# manhattan_midtown.yaml for the honesty note: a documented assumption, not a calibration).
+# Week 2 fleet mix: vehicle type diversity layered on top of the time-of-day demand
+# (configs/demand/manhattan_midtown.yaml). Fractions are a documented assumption, not a
+# ground-truth calibration -- no real per-district fleet-composition counts exist, same
+# "plausibility invariant, not ground truth" honesty as the demand periods themselves
+# (see docs/design/08_data_strategy.md section 8.2, and AUDIT.md).
+#
+# Real GTFS-derived bus routes/stops are explicitly deferred (see AUDIT.md's "not yet
+# done") -- `bus` here is a vehicle TYPE mixed into random demand, not scheduled service
+# on real routes; that upgrade is future work, not silently pretended to be done.
+network: manhattan
+vehicle_types:
+  - vtype_id: passenger_vtype
+    vclass: passenger
+    length_m: 4.5
+    max_speed_mps: 13.9 # ~50 km/h, typical NYC arterial limit
+    accel_mps2: 2.6
+    decel_mps2: 4.5
+    sigma: 0.5
+  - vtype_id: truck_vtype
+    vclass: truck
+    length_m: 8.0
+    max_speed_mps: 11.1 # ~40 km/h, trucks slower in dense urban grids
+    accel_mps2: 1.0
+    decel_mps2: 3.5
+    sigma: 0.5
+  - vtype_id: bus_vtype
+    vclass: bus
+    length_m: 12.0
+    max_speed_mps: 11.1
+    accel_mps2: 1.2
+    decel_mps2: 3.5
+    sigma: 0.5
+  - vtype_id: emergency_vtype
+    vclass: emergency
+    length_m: 5.0
+    max_speed_mps: 19.4 # ~70 km/h, emergency vehicles permitted higher speed
+    accel_mps2: 3.0
+    decel_mps2: 6.0
+    sigma: 0.3 # more consistent driving behavior
+components:
+  - vtype_id: passenger_vtype
+    fraction: 0.85
+  - vtype_id: truck_vtype
+    fraction: 0.08
+  - vtype_id: bus_vtype
+    fraction: 0.05
+  - vtype_id: emergency_vtype
+    fraction: 0.02

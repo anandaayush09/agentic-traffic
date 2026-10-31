@@ -1,0 +1,20 @@
+# Demand periods for whole-borough Manhattan (synthetic, like the Midtown district's: randomTrips
+# traffic is plausible, NOT calibrated to real counts -- see docs/operations/manhattan-progress.md).
+#
+# period_s is the mean seconds between insertions across the WHOLE network. Midtown's pm_peak used
+# 1.1 s for 22 signals; Manhattan has ~120x the signals, so the base density here is ~0.1 s
+# (~18,000 trips per 30 minutes). That is a starting point, not a claim about real flow: the capacity
+# benchmark (scripts/overnight_city.py) sweeps density with SUMO's --scale to find what this machine can
+# actually simulate without gridlock, so these files are generated once and scaled at run time.
+network: manhattan
+periods:
+  - name: midday
+    duration_s: 1800
+    period_s: 0.25
+    fringe_factor: 5.0
+    seed: 202
+  - name: pm_peak
+    duration_s: 1800
+    period_s: 0.1
+    fringe_factor: 5.0
+    seed: 204

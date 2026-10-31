@@ -19,7 +19,7 @@
 # -- staging/production deployments set ATLAS_ENV and the startup guard then refuses unsafe config.
 
 # ---------------------------------------------------------------- builder
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.15-slim-bookworm AS builder
 
 # libsumo's compiled extension links against a GUI-capable build's shared libs even for headless
 # use (found by running the built image on a kind cluster: libX11, then libXext, were missing).
@@ -55,7 +55,7 @@ RUN python scripts/build_district_network.py \
     && test -s data/networks/manhattan_midtown/demand/pm_peak.rou.xml
 
 # ---------------------------------------------------------------- runtime
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.15-slim-bookworm AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-6 libxext6 libxrender1 libsm6 libice6 libgl1 libatomic1 \

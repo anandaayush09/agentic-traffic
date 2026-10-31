@@ -5,12 +5,15 @@ name: kind smoke test
 # full Docker image and spins up a real kind cluster -- slower than the lint/type/test
 # job, same rationale as eval.yml being split out from ci.yml in Week 6.
 
+# Triggers: every pull request, plus manual runs. (It used to run on pushes to `main` only, which
+# never fired because this repository has no `main`; it is slow, so it gates PRs rather than every
+# push -- ci.yml already container-smoke-tests the image on every push.)
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   kind-smoke-test:
@@ -24,11 +27,10 @@ jobs:
           python-version: "3.12"
 
       - name: Sync dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
-      - name: Build manhattan_midtown network (needed inside the image)
-        run: uv run python scripts/build_district_network.py
-
+      # No host-side network build any more: the Dockerfile builds the road network itself, so a
+      # clean checkout produces the image with nothing else needed.
       - name: Build Docker image
         run: docker build -t atlas-traffic:dev .
 

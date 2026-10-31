@@ -43,7 +43,7 @@ from atlas.services.auth import create_operator_token  # noqa: E402
 # Must match deploy/helm/atlas/values.yaml's default cognitiveApi.jwtSecret --
 # values-kind.yaml doesn't override it, so the demo/CI deployment and this script
 # agree on the same JWT signing key.
-JWT_SECRET = "local-demo-secret-do-not-use-in-prod-32-bytes"
+JWT_SECRET = "local-demo-secret-do-not-use-in-prod-32-bytes"  # noqa: S105 -- the chart's public demo default
 SERVICE_NAME = "svc/atlas-cognitive-api"
 
 

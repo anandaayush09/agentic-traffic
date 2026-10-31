@@ -19,9 +19,18 @@
 # in-repo well before they were first actually run; the Helm chart / kind path is what has
 # been most recently exercised for real, not `docker compose up` directly.
 #
-# Planned profiles (filled in as each milestone lands):
-#   core  - twin, bus, redis, postgres, control-plane worker(s)  (Week 5-6)
-#   full  - core + cognitive plane + ML services + frontend + monitoring (Week 9-10)
+# Profiles:
+#   app   - JUST the product: API + dashboard + Redis. This is what you want to try it locally:
+#             docker compose --profile app up --build
+#           then open http://localhost:8080 . The API prints an operator token on startup:
+#             docker compose logs cognitive_api | grep -A1 "Operator JWT"
+#   core  - twin, bus, redis, control-plane worker(s)  (Week 5-6)
+#   full  - core + cognitive plane + dashboard           (Week 9-10)
+#   llm   - Redis only (shared LLM rate limits)
+#
+# Configuration comes from the environment / a local `.env` (copy .env.example). Nothing here is a
+# real secret: the JWT default below is the public demo value and is only honoured in
+# ATLAS_ENV=development -- the API refuses to start with it in staging/production.
 
 services:
   redpanda:
@@ -49,6 +58,21 @@ services:
       retries: 10
     profiles: ["core", "full"]
 
+  # Shared LLM rate-limit counters + provider health (atlas.cognitive.llm). Optional: the
+  # code falls back to per-process in-memory counters when Redis is unreachable.
+  # Start just this one with:  docker compose up -d redis
+  redis:
+    image: redis:7-alpine
+    container_name: atlas-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles: ["core", "full", "llm", "app"]
+
   intersection_agent:
     build: .
     container_name: atlas-intersection-agent
@@ -63,9 +87,15 @@ services:
     environment:
       # Local/demo-only value -- a real deployment injects this via a Secret (see
       # deploy/helm/atlas/templates/secret-cognitive-api.yaml for the k8s equivalent).
-      ATLAS_JWT_SECRET: "local-demo-secret-do-not-use-in-prod-32-bytes"
+      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-local-demo-secret-do-not-use-in-prod-32-bytes}
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       redpanda:
         condition: service_healthy
@@ -82,6 +112,12 @@ services:
       - --stale-after-s=10 # 2 missed 5s heartbeat cycles (docs/design/04_agent_architecture.md)
     ports:
       - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       redpanda:
         condition: service_healthy
@@ -100,19 +136,77 @@ services:
       - --kafka-brokers=redpanda:9092
     ports:
       - "8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       redpanda:
         condition: service_healthy
     profiles: ["core", "full"]
 
   cognitive_api:
-    build: .
+    build:
+      context: .
+      args:
+        ATLAS_VERSION: ${ATLAS_VERSION:-dev}
+    image: atlas-api:${ATLAS_VERSION:-dev}
     container_name: atlas-cognitive-api
     command: ["python", "scripts/run_dashboard_demo_api.py"]
+    restart: unless-stopped
+    # Optional local overrides (API keys, ATLAS_* settings). Not required: `required: false`
+    # means a missing .env is fine. Real secrets belong in .env (gitignored), never in this file.
+    env_file:
+      - path: .env
+        required: false
     environment:
-      # Same local/demo-only value as intersection_agent above -- a real deployment
-      # injects this via a Secret (deploy/helm/atlas/templates/secret-cognitive-api.yaml).
-      ATLAS_JWT_SECRET: "local-demo-secret-do-not-use-in-prod-32-bytes"
+      ATLAS_ENV: ${ATLAS_ENV:-development}
+      # Local/demo-only default; refused by the startup guard in staging/production.
+      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-local-demo-secret-do-not-use-in-prod-32-bytes}
+      ATLAS_DASHBOARD_ORIGINS: ${ATLAS_DASHBOARD_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      ATLAS_REDIS_URL: redis://redis:6379/0
+      # Incident history survives `docker compose restart` via the named volume below.
+      ATLAS_STATE_DB: /app/state/atlas.sqlite
+      ATLAS_LOG_FORMAT: ${ATLAS_LOG_FORMAT:-json}
     ports:
       - "8003:8000" # host 8003 to avoid colliding with intersection_agent's 8000:8000
-    profiles: ["full"] # not bus-connected yet, so not part of the "core" control-plane profile
+    volumes:
+      - atlas_state:/app/state
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles: ["full", "app"] # not bus-connected yet, so not part of the "core" control-plane profile
+
+  frontend:
+    build:
+      context: ./frontend
+    image: atlas-web:${ATLAS_VERSION:-dev}
+    environment:
+      # Runtime setting served to the browser as /config.js. The BROWSER (not this container)
+      # calls the API, so it is the host-published address.
+      ATLAS_API_BASE_URL: ${ATLAS_API_BASE_URL:-http://localhost:8003}
+    container_name: atlas-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      cognitive_api:
+        condition: service_healthy
+    profiles: ["full", "app"]
+
+volumes:
+  atlas_state:

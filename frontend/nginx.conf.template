@@ -1,0 +1,49 @@
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+
+    # Baseline hardening headers. (No Content-Security-Policy here: connect-src would have to name
+    # the API origin, which is only known per deployment -- add one in your environment's config.)
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    # Runtime settings for the single-page app. The official nginx image runs envsubst over
+    # /etc/nginx/templates/*.template at start-up, so ${ATLAS_API_BASE_URL} is filled in from the
+    # container's environment -- this is how ONE built image is promoted from staging to production
+    # with a different API address in each. (Only environment variables that are actually set are
+    # substituted, so nginx's own $uri etc. are untouched.) The value comes from your deployment
+    # config, not from users; it is placed in a JavaScript string, so keep it a plain URL.
+    location = /config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 "window.__ATLAS_CONFIG__ = { apiBaseUrl: '${ATLAS_API_BASE_URL}' };";
+    }
+
+    # Liveness for the container/orchestrator; deliberately not an app route.
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Hashed build assets never change under the same name: cache them hard.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    # Single-page app: unknown paths fall back to index.html, which must never be cached or a
+    # deploy wouldn't reach users until their cache expired.
+    location / {
+        add_header Cache-Control "no-cache";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "no-referrer" always;
+        try_files $uri /index.html;
+    }
+}

@@ -1,0 +1,183 @@
+name: Deploy
+
+# Deploys one already-built, already-tested image tag to one environment, then proves it worked.
+#
+# Used two ways, deliberately the SAME code path:
+#   1. automatically, by ci.yml (`uses:`), for staging and then production;
+#   2. manually (Actions tab -> Deploy -> Run workflow) -- which is also how you ROLL BACK: run it
+#      with an OLDER image tag. There is no separate rollback mechanism to rot, and the rollback is
+#      verified by the same smoke test as any other deploy.
+#
+# Nothing here builds anything. It promotes an image CI already built and tested, so what reaches
+# production is byte-for-byte what ran in staging.
+#
+# WHAT YOU MUST CONFIGURE (nothing real is deployed until you do; see docs/operations/ci-cd.md):
+#   Settings -> Environments -> New environment, named `staging` and `production`, each with
+#     Secrets:    DEPLOY_HOOK_API  (required) the platform's deploy-hook URL for the API service
+#                 DEPLOY_HOOK_WEB  (optional) same, for the dashboard
+#     Variables:  APP_URL          (required) the API's public base URL, e.g. https://atlas-api-staging.onrender.com
+#                 WEB_URL          (optional) the dashboard's public URL
+#   `production` -> Required reviewers: yourself (the manual approval gate).
+# Environment-scoped secrets are only visible to jobs that target that environment, so a staging
+# job can never read production credentials.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: staging or production
+        required: true
+        type: string
+      image_tag:
+        description: Immutable image tag, e.g. sha-0123456789ab
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        required: true
+        type: choice
+        options: [staging, production]
+      image_tag:
+        description: "Image tag to deploy, e.g. sha-0123456789ab. Use an OLDER tag to roll back."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  # Two deploys to the same environment must queue, never overlap -- and never be cancelled
+  # half-way (cancel-in-progress: false), which could leave a service in a mixed state.
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.image_tag }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    # Naming the environment is what makes GitHub apply that environment's secrets, variables and
+    # protection rules (e.g. production's required reviewers) -- the manual approval happens here.
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.WEB_URL || vars.APP_URL }}
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      APP_URL: ${{ vars.APP_URL }}
+      WEB_URL: ${{ vars.WEB_URL }}
+      HOOK_API: ${{ secrets.DEPLOY_HOOK_API }}
+      HOOK_WEB: ${{ secrets.DEPLOY_HOOK_WEB }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only immutable commit tags may be deployed. `latest`/`main` move; "what is running?" would
+      # become unanswerable and a rollback would not return to a known state.
+      - name: Validate inputs
+        run: |
+          if ! echo "${IMAGE_TAG}" | grep -Eq '^sha-[0-9a-f]{7,40}$'; then
+            echo "::error::image_tag must look like sha-<commit>, got '${IMAGE_TAG}' (mutable tags are refused)"
+            exit 1
+          fi
+          case "${ENVIRONMENT}" in staging|production) ;; *) echo "::error::unknown environment '${ENVIRONMENT}'"; exit 1;; esac
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          echo "API_IMAGE=ghcr.io/${owner}/atlas-api:${IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "WEB_IMAGE=ghcr.io/${owner}/atlas-web:${IMAGE_TAG}" >> "$GITHUB_ENV"
+
+      # Honest about being unconfigured, instead of reporting a deployment that never happened.
+      - name: Check this environment is configured
+        id: cfg
+        run: |
+          if [ -z "${HOOK_API}" ] || [ -z "${APP_URL}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### :warning: NOT DEPLOYED -- \`${ENVIRONMENT}\` is not configured"
+              echo "Image \`${IMAGE_TAG}\` was built and tested but nothing was deployed."
+              echo "Add the \`DEPLOY_HOOK_API\` secret and \`APP_URL\` variable to the \`${ENVIRONMENT}\` environment."
+              echo "See docs/operations/ci-cd.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::${ENVIRONMENT} is not configured (DEPLOY_HOOK_API / APP_URL missing); skipping deployment"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GHCR
+        if: steps.cfg.outputs.configured == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fail before touching the platform if the tag doesn't exist (a typo'd rollback tag, or an
+      # image CI never published).
+      - name: Verify the images exist in the registry
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          docker manifest inspect "${API_IMAGE}" > /dev/null
+          if [ -n "${HOOK_WEB}" ]; then docker manifest inspect "${WEB_IMAGE}" > /dev/null; fi
+          echo "Found ${API_IMAGE}"
+
+      # The platform pulls the image itself. Render's "deploy hook" URL accepts an `imgURL` query
+      # parameter naming the image to deploy (Render's documented format at the time of writing --
+      # confirm against their docs when you create the service). To use another platform (Cloud Run:
+      # `gcloud run deploy --image`; Fly: `flyctl deploy --image`), replace ONLY this step.
+      # The hook URL is a secret (it embeds a key): it is passed via env and never echoed.
+      - name: Trigger deployment
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          trigger() {
+            local hook="$1" image="$2" joiner="?"
+            case "$hook" in *\?*) joiner="&";; esac
+            curl --fail --silent --show-error --max-time 60 -X POST \
+              "${hook}${joiner}imgURL=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$image")" \
+              > /dev/null
+          }
+          trigger "${HOOK_API}" "${API_IMAGE}"
+          echo "API deployment triggered: ${API_IMAGE}"
+          if [ -n "${HOOK_WEB}" ]; then
+            trigger "${HOOK_WEB}" "${WEB_IMAGE}"
+            echo "Web deployment triggered: ${WEB_IMAGE}"
+          fi
+
+      # The step that makes this a real deploy rather than "we sent a request". It waits for the
+      # NEW version to be the one answering (a rolling deploy keeps the old one up for a while),
+      # then checks readiness, live traffic, and that auth is enforced. Failing here fails the
+      # pipeline -- and `deploy-production` depends on staging passing it.
+      - name: Smoke test the deployment
+        if: steps.cfg.outputs.configured == 'true'
+        run: >
+          python3 scripts/smoke_test_deployment.py
+          --base-url "${APP_URL}"
+          --expect-version "${IMAGE_TAG}"
+          --require-live-traffic
+          --timeout 900
+
+      - name: Check the dashboard is serving
+        if: steps.cfg.outputs.configured == 'true' && vars.WEB_URL != ''
+        run: |
+          for i in $(seq 1 30); do curl -fsS "${WEB_URL}/healthz" && exit 0 || sleep 10; done
+          echo "::error::dashboard at ${WEB_URL} did not become healthy"; exit 1
+
+      - name: Summary
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          {
+            echo "### :white_check_mark: Deployed to \`${ENVIRONMENT}\`"
+            echo "- API: \`${API_IMAGE}\` -> ${APP_URL}"
+            [ -n "${HOOK_WEB}" ] && echo "- Web: \`${WEB_IMAGE}\` -> ${WEB_URL}"
+            echo "- Smoke test: passed (version matched \`${IMAGE_TAG}\`)"
+            echo ""
+            echo "**To roll back:** Actions -> Deploy -> Run workflow -> environment \`${ENVIRONMENT}\`, with the previous known-good \`sha-...\` tag."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rollback hint on failure
+        if: failure() && steps.cfg.outputs.configured == 'true'
+        run: |
+          {
+            echo "### :x: Deployment of \`${IMAGE_TAG}\` to \`${ENVIRONMENT}\` FAILED"
+            echo "Roll back: Actions -> Deploy -> Run workflow -> environment \`${ENVIRONMENT}\`, image_tag = the previous known-good \`sha-...\`."
+            echo "Details: docs/operations/ci-cd.md#rollback"
+          } >> "$GITHUB_STEP_SUMMARY"

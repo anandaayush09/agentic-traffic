@@ -1,11 +1,51 @@
-.venv/
+# Keep the build context small and, more importantly, REPRODUCIBLE: anything here can't leak into
+# an image (secrets) or make a build depend on what happens to be on this machine (stale data).
+
+# VCS / editor / OS
 .git/
+.github/
+.claude/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Secrets and local config -- never baked into an image
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python caches and virtualenvs (the image builds its own venv from uv.lock)
+.venv/
+__pycache__/
+*.pyc
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
 .hypothesis/
 .coverage
-frontend/node_modules/
-frontend/dist/
-__pycache__/
-*.pyc
+htmlcov/
+
+# Tests and docs are not needed at run time
+tests/
+docs/
+
+# Frontend has its own image and build context (frontend/Dockerfile)
+frontend/
+
+# Generated/large data. The ONLY thing taken from data/ is the committed OSM extract; the road
+# network and demand are rebuilt inside the image, so a stale host-built copy can't sneak in.
+data/*
+!data/networks/
+data/networks/*
+!data/networks/manhattan_midtown/
+data/networks/manhattan_midtown/*
+!data/networks/manhattan_midtown/raw.osm.xml
+
+# Local state databases, models and checkpoints
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+mlruns/

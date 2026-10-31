@@ -1,33 +1,317 @@
-name: CI
+name: CI/CD
+
+# One pipeline, two halves:
+#   CI  (every push and every pull request): quality -> tests -> security -> build + test the images.
+#   CD  (pushes to the repository's DEFAULT branch only): publish the tested images -> deploy to
+#       staging -> smoke test -> [manual approval] -> deploy the SAME image to production.
+# The deploy half lives in deploy.yml (reusable), which is also the manual rollback tool.
+#
+# NOTE ON BRANCHES: this used to trigger only on `main`, but this repository's default branch is not
+# `main` (there is none on the remote), so CI never ran on your pushes. It now runs on every branch
+# and decides "is this a release branch?" from the repository's actual default branch.
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per branch: a newer push cancels the older run (a PR run replaces the push run for
+  # the same branch). Never cancel on the default branch -- that could abort a deploy mid-flight.
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
 
 jobs:
-  lint-typecheck-test:
+  # ------------------------------------------------------------------ CI
+  python-quality:
+    name: Python lint, format, types
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
 
-      - name: Sync dependencies
-        run: uv sync --extra dev
+      # --frozen: install exactly uv.lock and fail if pyproject.toml disagrees with it. CI must
+      # never silently resolve different versions than the ones you tested locally.
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
 
-      - name: Lint (ruff check)
+      # ruff also runs the bandit-style security rules (select "S" in pyproject.toml).
+      - name: Lint + static security analysis (ruff check)
         run: uv run ruff check .
 
-      - name: Format check (ruff format)
+      - name: Formatting (ruff format --check)
         run: uv run ruff format --check .
 
       - name: Type check (mypy --strict)
         run: uv run mypy
 
-      - name: Test (pytest)
-        run: uv run pytest -v
+  python-tests:
+    name: Python tests (unit + integration)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      # About 60 tests drive the REAL SUMO simulation on the Manhattan network. That network is a
+      # gitignored build artifact, so without these steps those tests silently SKIP and CI reports
+      # green having tested far less than it appears to. Build it (cached: the inputs rarely change).
+      - name: Restore road network cache
+        id: network-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/networks/manhattan_midtown/net.net.xml
+            data/networks/manhattan_midtown/vtypes.add.xml
+            data/networks/manhattan_midtown/demand
+          key: network-${{ hashFiles('data/networks/manhattan_midtown/raw.osm.xml', 'scripts/build_district_network.py', 'scripts/generate_demand.py', 'configs/demand/**', 'configs/fleet/**', 'uv.lock') }}
+
+      - name: Build road network + demand
+        if: steps.network-cache.outputs.cache-hit != 'true'
+        run: |
+          uv run python scripts/build_district_network.py
+          uv run python scripts/generate_demand.py
+
+      # Fails the build if real-simulation tests were skipped because the network is missing --
+      # the silent-skip trap described above.
+      - name: Guard against silently-skipped simulation tests
+        run: test -s data/networks/manhattan_midtown/net.net.xml
+
+      # Coverage floor 90% (measured: 94%). A floor rather than a target: it catches large untested
+      # additions without turning every PR into a percentage game. The unit tests mock the LLM
+      # providers (httpx MockTransport) and Redis (fakeredis), so no keys or services are needed.
+      - name: Run tests with coverage
+        run: >
+          uv run pytest -v
+          --cov=atlas --cov-report=term-missing --cov-report=xml
+          --cov-fail-under=90
+          --junitxml=test-results.xml
+
+      - name: Upload test + coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-reports
+          path: |
+            coverage.xml
+            test-results.xml
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend lint + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` installs exactly package-lock.json (and fails on drift); `npm install` would not.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `tsc -b && vite build`: type errors fail the build.
+      - name: Type check + build
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  security:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Audits the exact locked versions against the public vulnerability database (this is what
+      # found the PyJWT advisories). Blocking on purpose: a vulnerable auth library should stop a
+      # release. If an unfixable advisory ever blocks you, document it and pass --ignore-vuln <ID>.
+      # `torch` is skipped by the tool (the CPU wheel isn't on PyPI) -- tracked by Dependabot instead.
+      - name: Audit locked Python dependencies
+        run: |
+          uv export --frozen --extra dev --no-hashes --no-emit-project -o requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip
+
+  docker:
+    name: Build, test and publish images
+    needs: [python-quality, python-tests, frontend, security]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to the GitHub Container Registry (GHCR)
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    env:
+      IS_RELEASE: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image tag is the commit: immutable, traceable (tag -> commit -> pipeline run), and what
+      # `/version` reports and the post-deploy smoke test checks. Never `latest`.
+      - name: Compute image names and tag
+        id: meta
+        run: |
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "api_image=ghcr.io/${owner}/atlas-api" >> "$GITHUB_OUTPUT"
+          echo "web_image=ghcr.io/${owner}/atlas-web" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built on every run (PRs too) so a broken Dockerfile fails the PR, not the release. Built
+      # WITHOUT pushing: the tests below run against this exact image, and only that image is pushed.
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: atlas-api:ci
+          build-args: ATLAS_VERSION=${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          push: false
+          tags: atlas-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+      - name: Verify the API container runs as non-root
+        run: |
+          uid="$(docker run --rm atlas-api:ci id -u)"
+          echo "API container uid: ${uid}"
+          test "${uid}" != "0"
+
+      # The real test of the image: start the container and run the SAME smoke test that gates
+      # staging/production against it -- health, readiness (simulation warmed up), the right
+      # version, auth enforced, demo-token endpoint hidden.
+      - name: Smoke-test the API container
+        run: |
+          docker run -d --name atlas-api -p 8000:8000 atlas-api:ci
+          python3 scripts/smoke_test_deployment.py \
+            --base-url http://localhost:8000 \
+            --expect-version "${{ steps.meta.outputs.tag }}" \
+            --require-live-traffic --timeout 240
+
+      - name: Smoke-test the web container (runtime API address)
+        run: |
+          docker run -d --name atlas-web -p 8080:8080 -e ATLAS_API_BASE_URL=https://api.example.test atlas-web:ci
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/healthz && break || sleep 1; done
+          curl -fsS http://localhost:8080/config.js | tee /dev/stderr | grep -q "https://api.example.test"
+          curl -fsS http://localhost:8080/ | grep -q "config.js"
+
+      - name: Container logs
+        if: always()
+        run: |
+          echo "---- api ----"; docker logs atlas-api 2>&1 | tail -60 || true
+          echo "---- web ----"; docker logs atlas-web 2>&1 | tail -30 || true
+
+      # Report-only for now (exit-code 0): base-image CVEs often have no fix yet, and a gate nobody
+      # can satisfy gets disabled. Read the table; tighten to exit-code 1 once it's clean.
+      - name: Scan API image for vulnerabilities (report only)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: atlas-api:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+          format: table
+
+      # Publish only from the default branch, and only after every check above passed.
+      - name: Log in to GHCR
+        if: env.IS_RELEASE == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the tested images
+        if: env.IS_RELEASE == 'true'
+        run: |
+          tag="${{ steps.meta.outputs.tag }}"
+          for pair in "atlas-api:ci ${{ steps.meta.outputs.api_image }}" "atlas-web:ci ${{ steps.meta.outputs.web_image }}"; do
+            set -- $pair
+            docker tag "$1" "$2:${tag}"
+            docker push "$2:${tag}"
+          done
+          {
+            echo "### Images published"
+            echo "- \`${{ steps.meta.outputs.api_image }}:${tag}\`"
+            echo "- \`${{ steps.meta.outputs.web_image }}:${tag}\`"
+            echo ""
+            echo "Promoted unchanged to staging and then production -- never rebuilt."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ------------------------------------------------------------------ CD
+  # Runs only for pushes to the default branch, and only if everything above passed (`needs`).
+  deploy-staging:
+    name: Deploy to staging
+    needs: docker
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      image_tag: ${{ needs.docker.outputs.image_tag }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: read
+
+  # Same image, now to production. Three independent locks, because a real deployment must never
+  # happen by accident:
+  #   1. staging deployed and smoke-tested OK first (`needs`),
+  #   2. the repository variable PRODUCTION_DEPLOY_ENABLED must be exactly 'true' (unset by default),
+  #   3. the `production` Environment must have Required reviewers -- GitHub then pauses this job
+  #      until a human clicks Approve (Settings -> Environments -> production).
+  deploy-production:
+    name: Deploy to production
+    needs: [docker, deploy-staging]
+    if: >
+      github.event_name == 'push' &&
+      github.ref_name == github.event.repository.default_branch &&
+      vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      image_tag: ${{ needs.docker.outputs.image_tag }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: read

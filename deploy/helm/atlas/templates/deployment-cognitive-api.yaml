@@ -28,11 +28,21 @@ spec:
                   key: secret
             - name: ATLAS_DASHBOARD_ORIGINS
               value: {{ .Values.cognitiveApi.dashboardOrigins | quote }}
+            # development | staging | production. In staging/production the API refuses to start
+            # with the public demo JWT secret, so such a release MUST set a real secret
+            # (--set cognitiveApi.jwtSecret=... or an existing Secret) -- see docs/operations/ci-cd.md.
+            - name: ATLAS_ENV
+              value: {{ .Values.cognitiveApi.environment | quote }}
+            - name: ATLAS_VERSION
+              value: {{ .Values.cognitiveApi.image.tag | quote }}
+            - name: ATLAS_LOG_FORMAT
+              value: "json"
           ports:
             - containerPort: {{ .Values.cognitiveApi.port }}
+          # Ready = the live simulation has warmed up (503 until then); alive = the process answers.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: {{ .Values.cognitiveApi.port }}
             initialDelaySeconds: 5
             periodSeconds: 5

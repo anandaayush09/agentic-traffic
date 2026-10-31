@@ -7,6 +7,9 @@ name: Eval smoke suite
 # do on every commit. `workflow_dispatch` lets it be triggered manually too, e.g. to
 # verify a change to max_pressure.py/shield.py before merging.
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: "0 7 * * *" # 07:00 UTC nightly

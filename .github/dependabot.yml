@@ -1,0 +1,23 @@
+# Automatic update PRs. Each opens a normal pull request, so it runs through the SAME CI as your own
+# changes (tests, audit, image build) before you merge -- updates are proposed by the bot and
+# verified by the pipeline, never applied silently. Free for GitHub repositories.
+version: 2
+updates:
+  - package-ecosystem: uv # Python dependencies (pyproject.toml + uv.lock)
+    directory: "/"
+    schedule: { interval: weekly }
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm # dashboard
+    directory: "/frontend"
+    schedule: { interval: weekly }
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions # the versions pinned in .github/workflows
+    directory: "/"
+    schedule: { interval: weekly }
+  - package-ecosystem: docker # base images (python:3.12-slim, node, nginx)
+    directories: ["/", "/frontend"]
+    schedule: { interval: weekly }
